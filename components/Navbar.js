@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, Landmark, ShieldCheck } from "lucide-react";
+import { FileText, Landmark, ShieldCheck, Table } from "lucide-react";
 
 const ENLACES = [
   { href: "/solicitud", label: "Solicitudes", icon: FileText },
   { href: "/autorizaciones", label: "Autorizaciones", icon: ShieldCheck },
-  { href: "/tesoreria", label: "Tesorería", icon: Landmark, deshabilitado: true },
+  { href: "/tesoreria", label: "Tesorería", icon: Landmark },
+  { href: "/historial", label: "Historial", icon: Table },
 ];
 
 /** Navegación lateral global del sistema DIPZ. */
@@ -26,21 +27,7 @@ export default function Navbar() {
       </div>
 
       <ul className="flex flex-col gap-1">
-        {ENLACES.map(({ href, label, icon: Icon, deshabilitado }) => {
-          if (deshabilitado) {
-            return (
-              <li key={href}>
-                <span className="flex cursor-not-allowed items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-zinc-400 dark:text-zinc-600">
-                  <Icon size={17} />
-                  {label}
-                  <span className="ml-auto rounded-full bg-black/[.04] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-400 dark:bg-white/[.06] dark:text-zinc-600">
-                    Próximamente
-                  </span>
-                </span>
-              </li>
-            );
-          }
-
+        {ENLACES.map(({ href, label, icon: Icon }) => {
           const activo = pathname === href || pathname.startsWith(`${href}/`);
 
           return (
