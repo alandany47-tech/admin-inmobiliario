@@ -119,3 +119,20 @@ export async function crearSolicitudPago(payload) {
 
   return { folio: solicitud.folio, proveedorCreado };
 }
+
+/** Obtiene una solicitud de pago con su proyecto y proveedor para la vista de detalle/PDF. */
+export async function getSolicitudPorId(id) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("solicitudes_pago")
+    .select("*, proyectos(codigo, nombre), proveedores(razon_social, rfc, datos_bancarios)")
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    console.error("Error al consultar la solicitud:", error.message);
+    return null;
+  }
+
+  return data;
+}
