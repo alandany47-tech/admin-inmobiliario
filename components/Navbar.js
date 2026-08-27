@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -28,12 +29,17 @@ export default function Navbar() {
 
   return (
     <nav className="flex w-60 shrink-0 flex-col gap-8 border-r border-black/[.08] bg-white px-5 py-6 dark:border-white/[.145] dark:bg-zinc-950">
-      <div className="flex flex-col gap-0.5 px-1">
-        <span className="text-xl font-black tracking-tight text-black dark:text-zinc-50">
-          DIPZ
-        </span>
-        <span className="text-[10px] font-semibold tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
-          REAL ESTATE
+      <div className="flex flex-col gap-1.5 rounded-lg bg-zinc-900 px-3 py-3">
+        <Image
+          src="/logo.png"
+          alt="DPZ"
+          width={2600}
+          height={1248}
+          priority
+          className="h-8 w-auto self-start"
+        />
+        <span className="text-[10px] font-semibold tracking-[0.2em] text-zinc-400">
+          THE FUTURE OF REAL ESTATE
         </span>
       </div>
 
