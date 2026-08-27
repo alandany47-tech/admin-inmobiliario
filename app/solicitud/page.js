@@ -1,10 +1,15 @@
 import { getProyectos } from "@/app/actions/test";
 import { getProveedores } from "@/app/actions/proveedores";
+import { getWbsCatalog } from "@/app/actions/wbs";
 import SolicitudPagoForm from "@/components/SolicitudPagoForm";
 
 /** Pantalla de captura de solicitudes de pago. */
 export default async function SolicitudPage() {
-  const [proyectos, proveedores] = await Promise.all([getProyectos(), getProveedores()]);
+  const [proyectos, proveedores, wbsCatalog] = await Promise.all([
+    getProyectos(),
+    getProveedores(),
+    getWbsCatalog(),
+  ]);
 
   return (
     <div className="flex flex-col flex-1 items-center bg-zinc-50 font-sans dark:bg-black">
@@ -12,7 +17,7 @@ export default async function SolicitudPage() {
         <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
           Nueva Solicitud de Pago
         </h1>
-        <SolicitudPagoForm proyectos={proyectos} proveedores={proveedores} />
+        <SolicitudPagoForm proyectos={proyectos} proveedores={proveedores} wbsCatalog={wbsCatalog} />
       </main>
     </div>
   );

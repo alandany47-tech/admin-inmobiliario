@@ -2,12 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileText, Landmark, ShieldCheck, Table } from "lucide-react";
+import {
+  FileText,
+  Landmark,
+  LayoutDashboard,
+  ShieldCheck,
+  Table,
+  TrendingUp,
+  Users,
+} from "lucide-react";
 
 const ENLACES = [
+  { href: "/dashboard", label: "Dashboard", icon: TrendingUp },
   { href: "/solicitud", label: "Solicitudes", icon: FileText },
   { href: "/autorizaciones", label: "Autorizaciones", icon: ShieldCheck },
   { href: "/tesoreria", label: "Tesorería", icon: Landmark },
+  { href: "/proveedores", label: "Proveedores", icon: Users },
+  { href: "/control-maestro", label: "Control Maestro", icon: LayoutDashboard },
   { href: "/historial", label: "Historial", icon: Table },
 ];
 

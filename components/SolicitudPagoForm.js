@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Plus, Trash2, Users, X } from "lucide-react";
+import { CalendarClock, CheckCircle2, Plus, Trash2, Users, X } from "lucide-react";
 import { crearSolicitudPago, getFolioPreview } from "@/app/actions/solicitudes";
 
 const TASA_IVA = 0.16;
@@ -14,7 +14,6 @@ const FORM_VACIO = {
   numFactura: "",
   wbsCategoria: "",
   wbsPartida: "",
-  fechaProgramada: "",
 };
 
 const PROVEEDOR_NUEVO_VACIO = {
@@ -39,14 +38,30 @@ function formatoMXN(valor) {
   return valor.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 }
 
+function calcularProximoViernes() {
+  const hoy = new Date();
+  const diasHastaViernes = ((5 - hoy.getDay() + 7) % 7) || 7;
+  const viernes = new Date(hoy);
+  viernes.setDate(hoy.getDate() + diasHastaViernes);
+  return viernes;
+}
+
 const fechaHoy = new Date().toLocaleDateString("es-MX", {
   day: "2-digit",
   month: "long",
   year: "numeric",
 });
 
+const proximoViernes = calcularProximoViernes();
+const fechaProgramadaISO = proximoViernes.toISOString().slice(0, 10);
+const fechaProgramadaDisplay = proximoViernes.toLocaleDateString("es-MX", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
 /** Formulario de captura de solicitudes de pago con alta de proveedores en vivo. */
-export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresIniciales }) {
+export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresIniciales, wbsCatalog }) {
   const [proveedores, setProveedores] = useState(proveedoresIniciales);
   const [modoProveedor, setModoProveedor] = useState("existente");
   const [proveedorId, setProveedorId] = useState("");
@@ -83,8 +98,28 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
   );
   const total = useMemo(() => Math.round((subtotal + iva) * 100) / 100, [subtotal, iva]);
 
+  const wbsDisponible = useMemo(
+    () =>
+      wbsCatalog.filter(
+        (w) => w.proyecto_id === null || String(w.proyecto_id) === form.proyectoId
+      ),
+    [wbsCatalog, form.proyectoId]
+  );
+  const categoriasWbs = useMemo(
+    () => [...new Set(wbsDisponible.map((w) => w.categoria))],
+    [wbsDisponible]
+  );
+  const partidasWbs = useMemo(
+    () => wbsDisponible.filter((w) => w.categoria === form.wbsCategoria).map((w) => w.partida),
+    [wbsDisponible, form.wbsCategoria]
+  );
+
   function actualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
+  }
+
+  function actualizarWbsCategoria(valor) {
+    setForm((f) => ({ ...f, wbsCategoria: valor, wbsPartida: "" }));
   }
 
   function actualizarProveedorNuevo(campo, valor) {
@@ -130,8 +165,6 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
     if (partidasValidas.length === 0) {
       return "Agrega al menos una partida con descripción, cantidad y precio unitario.";
     }
-
-    if (!form.fechaProgramada) return "Selecciona la fecha programada de pago.";
 
     return null;
   }
@@ -183,7 +216,7 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
       subtotal,
       iva,
       total,
-      fechaProgramada: form.fechaProgramada,
+      fechaProgramada: fechaProgramadaISO,
     });
 
     setEnviando(false);
@@ -405,13 +438,13 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
           </div>
 
           <div className="flex flex-col gap-1.5 sm:max-w-xs">
-            <label className={labelClase}>Fecha Programada de Pago</label>
-            <input
-              type="date"
-              className={inputClase}
-              value={form.fechaProgramada}
-              onChange={(e) => actualizarCampo("fechaProgramada", e.target.value)}
-            />
+            <label className={labelClase}>Fecha Estimada de Pago</label>
+            <div
+              className={`${inputClase} inline-flex w-fit items-center gap-2 bg-black/[.03] text-zinc-600 dark:bg-white/[.04] dark:text-zinc-400`}
+            >
+              <CalendarClock size={14} />
+              Próximo viernes: {fechaProgramadaDisplay}
+            </div>
           </div>
         </section>
 
@@ -423,23 +456,34 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <label className={labelClase}>WBS Categoría</label>
-              <input
-                type="text"
-                placeholder="9 — Gerencia de Obra"
+              <select
                 className={inputClase}
                 value={form.wbsCategoria}
-                onChange={(e) => actualizarCampo("wbsCategoria", e.target.value)}
-              />
+                onChange={(e) => actualizarWbsCategoria(e.target.value)}
+              >
+                <option value="">Selecciona una categoría…</option>
+                {categoriasWbs.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex flex-col gap-1.5">
               <label className={labelClase}>WBS Partida</label>
-              <input
-                type="text"
-                placeholder="9.1.1 — Owner's REP"
+              <select
                 className={inputClase}
                 value={form.wbsPartida}
                 onChange={(e) => actualizarCampo("wbsPartida", e.target.value)}
-              />
+                disabled={!form.wbsCategoria}
+              >
+                <option value="">Selecciona una partida…</option>
+                {partidasWbs.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </section>
