@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 
-/** Lista todas las solicitudes de pago con proyecto y proveedor para el historial general. */
+/** Lista las solicitudes de pago cerradas (Pagado/Cancelado) para el historial general. */
 export async function getHistorialSolicitudes() {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -10,6 +10,7 @@ export async function getHistorialSolicitudes() {
     .select(
       "id, folio, created_at, metodo_pago, solicitante, subtotal, iva, total, estado, fecha_programada, fecha_pago, proyectos(id, codigo, nombre), proveedores(razon_social)"
     )
+    .in("estado", ["Pagado", "Cancelado"])
     .order("created_at", { ascending: false });
 
   if (error) {

@@ -11,7 +11,7 @@ export async function getSolicitudesControlMaestro() {
   const { data, error } = await supabase
     .from("solicitudes_pago")
     .select(
-      "id, folio, created_at, metodo_pago, solicitante, subtotal, iva, total, estado, wbs_categoria, fecha_programada, fecha_pago, comprobante_url, proyectos(id, codigo, nombre), proveedores(razon_social)"
+      "id, folio, created_at, metodo_pago, solicitante, subtotal, iva, total, estado, fecha_programada, fecha_pago, comprobante_url, proyectos(id, codigo, nombre), proveedores(id, razon_social)"
     )
     .order("created_at", { ascending: false });
 

@@ -1,12 +1,21 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Landmark, Mail, Phone, Search } from "lucide-react";
+import { Landmark, Mail, Pencil, Phone, Power, Search, Trash2, X } from "lucide-react";
+import {
+  actualizarProveedor,
+  cambiarEstatusProveedor,
+  eliminarProveedor,
+} from "@/app/actions/proveedores";
 
 const ESTILO_ESTATUS = {
   Activo: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400",
   Inactivo: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400",
 };
+
+const inputClase =
+  "rounded border border-black/[.08] bg-transparent px-3 py-2 text-sm dark:border-white/[.145]";
+const labelClase = "text-sm font-medium text-zinc-700 dark:text-zinc-300";
 
 function datosBancariosTexto(datos) {
   if (!datos?.banco) return null;
@@ -16,9 +25,26 @@ function datosBancariosTexto(datos) {
   return `${datos.banco} · CLABE ${datos.clabe ?? "—"}`;
 }
 
-/** Directorio de proveedores con búsqueda rápida por razón social o RFC. */
-export default function DirectorioProveedores({ proveedores }) {
+function formularioDesdeProveedor(p) {
+  const datos = p.datos_bancarios ?? {};
+  return {
+    razonSocial: p.razon_social ?? "",
+    rfc: p.rfc ?? "",
+    banco: datos.banco === "Otro" ? "Otro" : "Banregio",
+    numeroCuenta: datos.numero_cuenta ?? "",
+    clabe: datos.clabe ?? "",
+  };
+}
+
+/** Directorio de proveedores: búsqueda, edición, activación/desactivación y eliminación segura. */
+export default function DirectorioProveedores({ proveedores: proveedoresIniciales }) {
+  const [proveedores, setProveedores] = useState(proveedoresIniciales);
   const [busqueda, setBusqueda] = useState("");
+  const [proveedorEnEdicion, setProveedorEnEdicion] = useState(null);
+  const [form, setForm] = useState(null);
+  const [guardando, setGuardando] = useState(false);
+  const [procesandoId, setProcesandoId] = useState(null);
+  const [error, setError] = useState("");
 
   const proveedoresFiltrados = useMemo(() => {
     const termino = busqueda.trim().toLowerCase();
@@ -29,6 +55,90 @@ export default function DirectorioProveedores({ proveedores }) {
         (p.rfc ?? "").toLowerCase().includes(termino)
     );
   }, [proveedores, busqueda]);
+
+  function abrirEdicion(p) {
+    setProveedorEnEdicion(p);
+    setForm(formularioDesdeProveedor(p));
+    setError("");
+  }
+
+  function cerrarEdicion() {
+    setProveedorEnEdicion(null);
+    setForm(null);
+  }
+
+  function actualizarCampo(campo, valor) {
+    setForm((f) => ({ ...f, [campo]: valor }));
+  }
+
+  async function guardarEdicion(e) {
+    e.preventDefault();
+    setError("");
+
+    if (!form.razonSocial.trim()) return setError("Captura la razón social.");
+
+    const datosBancarios =
+      form.banco === "Banregio"
+        ? { banco: "Banregio", numero_cuenta: form.numeroCuenta }
+        : { banco: "Otro", clabe: form.clabe };
+
+    setGuardando(true);
+    const resultado = await actualizarProveedor(proveedorEnEdicion.id, {
+      razonSocial: form.razonSocial,
+      rfc: form.rfc,
+      datosBancarios,
+    });
+    setGuardando(false);
+
+    if (resultado.error) {
+      setError(resultado.error);
+      return;
+    }
+
+    setProveedores((filas) =>
+      filas.map((p) =>
+        p.id === proveedorEnEdicion.id
+          ? { ...p, razon_social: form.razonSocial.trim(), rfc: form.rfc?.trim() || null, datos_bancarios: datosBancarios }
+          : p
+      )
+    );
+    cerrarEdicion();
+  }
+
+  async function alternarEstatus(p) {
+    const nuevoEstatus = p.estatus === "Activo" ? "Inactivo" : "Activo";
+    setProcesandoId(p.id);
+    setError("");
+
+    const resultado = await cambiarEstatusProveedor(p.id, nuevoEstatus);
+    setProcesandoId(null);
+
+    if (resultado.error) {
+      setError(resultado.error);
+      return;
+    }
+
+    setProveedores((filas) => filas.map((f) => (f.id === p.id ? { ...f, estatus: nuevoEstatus } : f)));
+  }
+
+  async function eliminar(p) {
+    if (!window.confirm(`¿Eliminar al proveedor "${p.razon_social}"? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    setProcesandoId(p.id);
+    setError("");
+
+    const resultado = await eliminarProveedor(p.id);
+    setProcesandoId(null);
+
+    if (resultado.error) {
+      setError(resultado.error);
+      return;
+    }
+
+    setProveedores((filas) => filas.filter((f) => f.id !== p.id));
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -46,6 +156,8 @@ export default function DirectorioProveedores({ proveedores }) {
         />
       </div>
 
+      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+
       {proveedoresFiltrados.length === 0 ? (
         <p className="rounded-lg border border-dashed border-black/[.08] p-8 text-center text-sm text-zinc-500 dark:border-white/[.145] dark:text-zinc-400">
           No se encontraron proveedores.
@@ -54,6 +166,7 @@ export default function DirectorioProveedores({ proveedores }) {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {proveedoresFiltrados.map((p) => {
             const cuenta = datosBancariosTexto(p.datos_bancarios);
+            const procesando = procesandoId === p.id;
             return (
               <div
                 key={p.id}
@@ -97,9 +210,132 @@ export default function DirectorioProveedores({ proveedores }) {
                     <Landmark size={13} /> {cuenta}
                   </div>
                 )}
+
+                <div className="flex items-center gap-2 border-t border-black/[.08] pt-3 dark:border-white/[.145]">
+                  <button
+                    type="button"
+                    onClick={() => abrirEdicion(p)}
+                    className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+                  >
+                    <Pencil size={12} /> Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => alternarEstatus(p)}
+                    disabled={procesando}
+                    className="flex items-center gap-1 text-xs font-medium text-zinc-600 hover:underline disabled:opacity-50 dark:text-zinc-400"
+                  >
+                    <Power size={12} /> {p.estatus === "Activo" ? "Desactivar" : "Activar"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => eliminar(p)}
+                    disabled={procesando}
+                    className="ml-auto flex items-center gap-1 text-xs font-medium text-red-600 hover:underline disabled:opacity-50 dark:text-red-400"
+                  >
+                    <Trash2 size={12} /> Eliminar
+                  </button>
+                </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {proveedorEnEdicion && (
+        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 px-4">
+          <form
+            onSubmit={guardarEdicion}
+            className="flex w-full max-w-md flex-col gap-4 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-950"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-black dark:text-zinc-50">
+                Editar Proveedor
+              </h3>
+              <button
+                type="button"
+                onClick={cerrarEdicion}
+                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClase}>Razón Social</label>
+              <input
+                type="text"
+                className={inputClase}
+                value={form.razonSocial}
+                onChange={(e) => actualizarCampo("razonSocial", e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClase}>RFC (opcional)</label>
+              <input
+                type="text"
+                className={`${inputClase} uppercase`}
+                value={form.rfc}
+                onChange={(e) => actualizarCampo("rfc", e.target.value.toUpperCase())}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClase}>Banco</label>
+              <select
+                className={inputClase}
+                value={form.banco}
+                onChange={(e) => actualizarCampo("banco", e.target.value)}
+              >
+                <option value="Banregio">Banregio</option>
+                <option value="Otro">Otro</option>
+              </select>
+            </div>
+
+            {form.banco === "Banregio" ? (
+              <div className="flex flex-col gap-1.5">
+                <label className={labelClase}>Número de Cuenta</label>
+                <input
+                  type="text"
+                  className={inputClase}
+                  value={form.numeroCuenta}
+                  onChange={(e) => actualizarCampo("numeroCuenta", e.target.value)}
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                <label className={labelClase}>CLABE Interbancaria (18 dígitos)</label>
+                <input
+                  type="text"
+                  maxLength={18}
+                  className={inputClase}
+                  value={form.clabe}
+                  onChange={(e) => actualizarCampo("clabe", e.target.value.replace(/\D/g, ""))}
+                />
+              </div>
+            )}
+
+            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={cerrarEdicion}
+                disabled={guardando}
+                className="rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={guardando}
+                className="rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] disabled:opacity-50 dark:hover:bg-[#ccc]"
+              >
+                {guardando ? "Guardando…" : "Guardar Cambios"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

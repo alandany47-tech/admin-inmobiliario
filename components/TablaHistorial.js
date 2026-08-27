@@ -3,12 +3,12 @@
 import { useMemo, useState } from "react";
 import { Download } from "lucide-react";
 
-const ESTADOS = ["Por Autorizar", "Autorizado", "Pospuesto", "Pagado", "Cancelado"];
+const MESES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
 
 const ESTILO_ESTADO = {
-  "Por Autorizar": "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
-  Autorizado: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400",
-  Pospuesto: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400",
   Pagado: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400",
   Cancelado: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400",
 };
@@ -26,19 +26,29 @@ function hoyISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** Historial general de solicitudes con filtros por proyecto/estado y exportación a Excel. */
+/** Historial general de solicitudes cerradas (Pagado/Cancelado) con filtros por mes, año y proyecto. */
 export default function TablaHistorial({ solicitudes, proyectos }) {
+  const hoy = new Date();
   const [proyectoId, setProyectoId] = useState("");
-  const [estado, setEstado] = useState("");
+  const [mes, setMes] = useState("");
+  const [anio, setAnio] = useState(String(hoy.getFullYear()));
   const [exportando, setExportando] = useState(false);
+
+  const aniosDisponibles = useMemo(() => {
+    const anios = new Set([new Date().getFullYear()]);
+    solicitudes.forEach((s) => anios.add(new Date(s.created_at).getFullYear()));
+    return [...anios].sort((a, b) => b - a);
+  }, [solicitudes]);
 
   const solicitudesFiltradas = useMemo(() => {
     return solicitudes.filter((s) => {
       if (proyectoId && String(s.proyectos?.id) !== proyectoId) return false;
-      if (estado && s.estado !== estado) return false;
+      const fecha = new Date(s.created_at);
+      if (mes && fecha.getMonth() + 1 !== Number(mes)) return false;
+      if (anio && fecha.getFullYear() !== Number(anio)) return false;
       return true;
     });
-  }, [solicitudes, proyectoId, estado]);
+  }, [solicitudes, proyectoId, mes, anio]);
 
   async function exportarExcel() {
     setExportando(true);
@@ -85,14 +95,26 @@ export default function TablaHistorial({ solicitudes, proyectos }) {
           </select>
 
           <select
-            value={estado}
-            onChange={(e) => setEstado(e.target.value)}
+            value={mes}
+            onChange={(e) => setMes(e.target.value)}
             className="rounded border border-black/[.08] bg-transparent px-3 py-2 text-sm dark:border-white/[.145]"
           >
-            <option value="">Todos los estados</option>
-            {ESTADOS.map((e) => (
-              <option key={e} value={e}>
-                {e}
+            <option value="">Todos los meses</option>
+            {MESES.map((nombre, i) => (
+              <option key={nombre} value={i + 1}>
+                {nombre}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={anio}
+            onChange={(e) => setAnio(e.target.value)}
+            className="rounded border border-black/[.08] bg-transparent px-3 py-2 text-sm dark:border-white/[.145]"
+          >
+            {aniosDisponibles.map((a) => (
+              <option key={a} value={a}>
+                {a}
               </option>
             ))}
           </select>

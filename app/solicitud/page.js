@@ -17,7 +17,11 @@ export default async function SolicitudPage() {
         <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
           Nueva Solicitud de Pago
         </h1>
-        <SolicitudPagoForm proyectos={proyectos} proveedores={proveedores} wbsCatalog={wbsCatalog} />
+        <SolicitudPagoForm
+          proyectos={proyectos}
+          proveedores={proveedores.filter((p) => p.estatus === "Activo")}
+          wbsCatalog={wbsCatalog}
+        />
       </main>
     </div>
   );

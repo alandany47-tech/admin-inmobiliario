@@ -19,6 +19,73 @@ export async function getCuentasBancarias() {
   return data;
 }
 
+/** Lista los movimientos de tesorería (ingresos y egresos) de todas las cuentas. */
+export async function getMovimientosTesoreria() {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("movimientos_tesoreria")
+    .select("*, proyectos(codigo, nombre)")
+    .order("fecha", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Error al consultar movimientos de tesorería:", error.message);
+    return [];
+  }
+
+  return data;
+}
+
+/**
+ * Ajusta el saldo inicial de una cuenta; la función de Postgres traslada el
+ * mismo delta al saldo actual para no perder el efecto de movimientos previos.
+ */
+export async function actualizarSaldoInicial(cuentaId, saldoInicial) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("actualizar_saldo_inicial_cuenta", {
+    p_cuenta_id: cuentaId,
+    p_saldo_inicial: saldoInicial,
+  });
+
+  if (error) {
+    return { error: `No se pudo actualizar el saldo inicial: ${error.message}` };
+  }
+
+  revalidatePath("/tesoreria");
+  return { ok: true, cuenta: data };
+}
+
+/**
+ * Registra un movimiento manual de tesorería (ingreso o egreso); la función
+ * de Postgres actualiza el saldo de la cuenta y calcula el saldo resultante
+ * de forma atómica.
+ */
+export async function registrarMovimiento(payload) {
+  const { cuentaId, proyectoId, tipoMovimiento, fecha, razonSocial, concepto, monto, comentarios } =
+    payload;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("registrar_movimiento_tesoreria", {
+    p_cuenta_id: cuentaId,
+    p_proyecto_id: proyectoId || null,
+    p_tipo_movimiento: tipoMovimiento,
+    p_fecha: fecha,
+    p_razon_social: razonSocial || null,
+    p_concepto: concepto,
+    p_monto: monto,
+    p_comentarios: comentarios || null,
+  });
+
+  if (error) {
+    return { error: `No se pudo registrar el movimiento: ${error.message}` };
+  }
+
+  revalidatePath("/tesoreria");
+  revalidatePath("/historial");
+  revalidatePath("/dashboard");
+  return { ok: true, movimiento: data };
+}
+
 /** Lista las solicitudes autorizadas listas para dispersión de pago. */
 export async function getSolicitudesAutorizadas() {
   const supabase = await createClient();

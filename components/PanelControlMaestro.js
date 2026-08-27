@@ -7,6 +7,7 @@ import { cambiarEstadoGeneral, subirComprobante } from "@/app/actions/controlMae
 import ModalSolicitudRapida from "@/components/ModalSolicitudRapida";
 
 const ESTADOS = ["Por Autorizar", "Autorizado", "Pospuesto", "Pagado", "Cancelado"];
+const METODOS_PAGO = ["Efectivo", "Transferencia bancaria"];
 
 const ESTILO_ESTADO = {
   "Por Autorizar": "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
@@ -29,16 +30,6 @@ function hoyISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function claveperiodo(fecha) {
-  const f = new Date(fecha);
-  return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function etiquetaPeriodo(clave) {
-  const [anio, mes] = clave.split("-").map(Number);
-  return new Date(anio, mes - 1, 1).toLocaleDateString("es-MX", { month: "long", year: "numeric" });
-}
-
 /** Panel de control maestro: filtros, alta rápida, cambio de estado y comprobantes. */
 export default function PanelControlMaestro({
   solicitudes: solicitudesIniciales,
@@ -47,9 +38,9 @@ export default function PanelControlMaestro({
   wbsCatalog,
 }) {
   const [solicitudes, setSolicitudes] = useState(solicitudesIniciales);
-  const [periodo, setPeriodo] = useState("");
   const [proyectoId, setProyectoId] = useState("");
-  const [categoria, setCategoria] = useState("");
+  const [proveedorId, setProveedorId] = useState("");
+  const [metodoPago, setMetodoPago] = useState("");
   const [estado, setEstado] = useState("");
   const [modalAbierto, setModalAbierto] = useState(false);
   const [actualizando, setActualizando] = useState({});
@@ -58,24 +49,15 @@ export default function PanelControlMaestro({
   const [exportando, setExportando] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  const periodos = useMemo(
-    () => [...new Set(solicitudes.map((s) => claveperiodo(s.created_at)))].sort().reverse(),
-    [solicitudes]
-  );
-  const categoriasWbs = useMemo(
-    () => [...new Set(wbsCatalog.map((w) => w.categoria))],
-    [wbsCatalog]
-  );
-
   const solicitudesFiltradas = useMemo(() => {
     return solicitudes.filter((s) => {
-      if (periodo && claveperiodo(s.created_at) !== periodo) return false;
       if (proyectoId && String(s.proyectos?.id) !== proyectoId) return false;
-      if (categoria && s.wbs_categoria !== categoria) return false;
+      if (proveedorId && String(s.proveedores?.id) !== proveedorId) return false;
+      if (metodoPago && s.metodo_pago !== metodoPago) return false;
       if (estado && s.estado !== estado) return false;
       return true;
     });
-  }, [solicitudes, periodo, proyectoId, categoria, estado]);
+  }, [solicitudes, proyectoId, proveedorId, metodoPago, estado]);
 
   function cambiarEstado(id, nuevoEstado) {
     setActualizando((a) => ({ ...a, [id]: true }));
@@ -136,7 +118,6 @@ export default function PanelControlMaestro({
       Proveedor: s.proveedores?.razon_social ?? "",
       "Método de Pago": s.metodo_pago,
       Solicitante: s.solicitante,
-      "Categoría WBS": s.wbs_categoria ?? "",
       Subtotal: s.subtotal,
       IVA: s.iva,
       Total: s.total,
@@ -218,15 +199,6 @@ export default function PanelControlMaestro({
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-3">
-          <select value={periodo} onChange={(e) => setPeriodo(e.target.value)} className={selectClase}>
-            <option value="">Todos los periodos</option>
-            {periodos.map((p) => (
-              <option key={p} value={p}>
-                {etiquetaPeriodo(p)}
-              </option>
-            ))}
-          </select>
-
           <select
             value={proyectoId}
             onChange={(e) => setProyectoId(e.target.value)}
@@ -241,20 +213,33 @@ export default function PanelControlMaestro({
           </select>
 
           <select
-            value={categoria}
-            onChange={(e) => setCategoria(e.target.value)}
+            value={proveedorId}
+            onChange={(e) => setProveedorId(e.target.value)}
             className={selectClase}
           >
-            <option value="">Todas las categorías</option>
-            {categoriasWbs.map((c) => (
-              <option key={c} value={c}>
-                {c}
+            <option value="">Todos los proveedores</option>
+            {proveedores.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.razon_social}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={metodoPago}
+            onChange={(e) => setMetodoPago(e.target.value)}
+            className={selectClase}
+          >
+            <option value="">Todos los métodos de pago</option>
+            {METODOS_PAGO.map((m) => (
+              <option key={m} value={m}>
+                {m}
               </option>
             ))}
           </select>
 
           <select value={estado} onChange={(e) => setEstado(e.target.value)} className={selectClase}>
-            <option value="">Todos los estados</option>
+            <option value="">Todos los estatus</option>
             {ESTADOS.map((e) => (
               <option key={e} value={e}>
                 {e}
@@ -305,7 +290,6 @@ export default function PanelControlMaestro({
                 <th className="px-4 py-3">Fecha</th>
                 <th className="px-4 py-3">Proyecto</th>
                 <th className="px-4 py-3">Proveedor</th>
-                <th className="px-4 py-3">Categoría WBS</th>
                 <th className="px-4 py-3">Método de Pago</th>
                 <th className="px-4 py-3 text-right">Total</th>
                 <th className="px-4 py-3">Estado</th>
@@ -329,9 +313,6 @@ export default function PanelControlMaestro({
                       {s.proyectos?.codigo} — {s.proyectos?.nombre}
                     </td>
                     <td className="px-4 py-3">{s.proveedores?.razon_social}</td>
-                    <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
-                      {s.wbs_categoria || "—"}
-                    </td>
                     <td className="px-4 py-3">{s.metodo_pago}</td>
                     <td className="px-4 py-3 text-right font-medium">{formatoMXN(s.total)}</td>
                     <td className="px-4 py-3">
@@ -391,7 +372,7 @@ export default function PanelControlMaestro({
       {modalAbierto && (
         <ModalSolicitudRapida
           proyectos={proyectos}
-          proveedores={proveedores}
+          proveedores={proveedores.filter((p) => p.estatus === "Activo")}
           wbsCatalog={wbsCatalog}
           onCreada={solicitudCreada}
           onCerrar={() => setModalAbierto(false)}
