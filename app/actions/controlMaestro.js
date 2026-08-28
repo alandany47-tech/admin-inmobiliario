@@ -4,8 +4,12 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
 const ESTADOS_VALIDOS = ["Por Autorizar", "Autorizado", "Pospuesto", "Pagado", "Cancelado"];
+const ESTADOS_ACTIVOS = ["Por Autorizar", "Autorizado", "Pospuesto"];
 
-/** Lista todas las solicitudes de pago con proyecto y proveedor para el panel de control maestro. */
+/**
+ * Lista las solicitudes de pago activas (no 'Pagado' ni 'Cancelado') para el
+ * panel de control maestro. Esos dos estados son finales y viven en /historial.
+ */
 export async function getSolicitudesControlMaestro() {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -13,6 +17,7 @@ export async function getSolicitudesControlMaestro() {
     .select(
       "id, folio, created_at, metodo_pago, solicitante, subtotal, iva, total, estado, fecha_programada, fecha_pago, comprobante_url, proyectos(id, codigo, nombre), proveedores(id, razon_social)"
     )
+    .in("estado", ESTADOS_ACTIVOS)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -26,7 +31,9 @@ export async function getSolicitudesControlMaestro() {
 /**
  * Cambia el estado de una solicitud. Si el nuevo estado es 'Pagado', delega
  * en la función atómica de tesorería para dispersar el pago y debitar la
- * cuenta correspondiente al método de pago.
+ * cuenta correspondiente al método de pago. Si la solicitud estaba 'Pagado'
+ * y se mueve a otro estado, delega en la función atómica de reversión para
+ * restaurar el saldo y compensar el movimiento en la bitácora.
  */
 export async function cambiarEstadoGeneral(solicitudId, nuevoEstado) {
   if (!ESTADOS_VALIDOS.includes(nuevoEstado)) {
@@ -34,6 +41,16 @@ export async function cambiarEstadoGeneral(solicitudId, nuevoEstado) {
   }
 
   const supabase = await createClient();
+
+  const { data: solicitudActual, error: errorConsulta } = await supabase
+    .from("solicitudes_pago")
+    .select("estado")
+    .eq("id", solicitudId)
+    .single();
+
+  if (errorConsulta) {
+    return { error: `No se pudo consultar la solicitud: ${errorConsulta.message}` };
+  }
 
   if (nuevoEstado === "Pagado") {
     const { error } = await supabase.rpc("procesar_pago_solicitud", {
@@ -43,6 +60,15 @@ export async function cambiarEstadoGeneral(solicitudId, nuevoEstado) {
 
     if (error) {
       return { error: `No se pudo procesar el pago: ${error.message}` };
+    }
+  } else if (solicitudActual.estado === "Pagado") {
+    const { error } = await supabase.rpc("revertir_pago_solicitud", {
+      p_solicitud_id: solicitudId,
+      p_nuevo_estado: nuevoEstado,
+    });
+
+    if (error) {
+      return { error: `No se pudo revertir el pago: ${error.message}` };
     }
   } else {
     const { error } = await supabase

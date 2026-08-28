@@ -86,6 +86,54 @@ export async function registrarMovimiento(payload) {
   return { ok: true, movimiento: data };
 }
 
+/**
+ * Edita el monto de un movimiento de tesorería ya registrado; la función de
+ * Postgres traslada el delta al saldo de la cuenta y, si el movimiento viene
+ * de una solicitud, sincroniza su total para no desfasar el ejercido del WBS.
+ */
+export async function editarMovimiento(movimientoId, nuevoMonto) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("editar_movimiento_tesoreria", {
+    p_movimiento_id: movimientoId,
+    p_nuevo_monto: nuevoMonto,
+  });
+
+  if (error) {
+    return { error: `No se pudo editar el movimiento: ${error.message}` };
+  }
+
+  revalidatePath("/tesoreria");
+  revalidatePath("/historial");
+  revalidatePath("/dashboard");
+  revalidatePath("/wbs");
+  revalidatePath("/control-maestro");
+  return { ok: true, movimiento: data };
+}
+
+/**
+ * Elimina un movimiento de tesorería; la función de Postgres devuelve el
+ * monto a la cuenta y, si estaba ligado a una solicitud 'Pagado', la regresa
+ * a 'Autorizado' para que no quede marcada como pagada sin respaldo en la bitácora.
+ */
+export async function eliminarMovimiento(movimientoId) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("eliminar_movimiento_tesoreria", {
+    p_movimiento_id: movimientoId,
+  });
+
+  if (error) {
+    return { error: `No se pudo eliminar el movimiento: ${error.message}` };
+  }
+
+  revalidatePath("/tesoreria");
+  revalidatePath("/historial");
+  revalidatePath("/dashboard");
+  revalidatePath("/wbs");
+  revalidatePath("/control-maestro");
+  revalidatePath("/autorizaciones");
+  return { ok: true, saldoActual: data };
+}
+
 /** Lista las solicitudes autorizadas listas para dispersión de pago. */
 export async function getSolicitudesAutorizadas() {
   const supabase = await createClient();

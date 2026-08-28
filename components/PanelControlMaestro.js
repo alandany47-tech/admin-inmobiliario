@@ -7,6 +7,7 @@ import ModalSolicitudRapida from "@/components/ModalSolicitudRapida";
 import ModalVisorPDF from "@/components/ModalVisorPDF";
 
 const ESTADOS = ["Por Autorizar", "Autorizado", "Pospuesto", "Pagado", "Cancelado"];
+const ESTADOS_FILTRO = ["Por Autorizar", "Autorizado", "Pospuesto"];
 const METODOS_PAGO = ["Efectivo", "Transferencia bancaria"];
 
 const ESTILO_ESTADO = {
@@ -240,8 +241,8 @@ export default function PanelControlMaestro({
           </select>
 
           <select value={estado} onChange={(e) => setEstado(e.target.value)} className={selectClase}>
-            <option value="">Todos los estatus</option>
-            {ESTADOS.map((e) => (
+            <option value="">Todas las activas</option>
+            {ESTADOS_FILTRO.map((e) => (
               <option key={e} value={e}>
                 {e}
               </option>
@@ -317,18 +318,36 @@ export default function PanelControlMaestro({
                     <td className="px-4 py-3">{s.metodo_pago}</td>
                     <td className="px-4 py-3 text-right font-medium">{formatoMXN(s.total)}</td>
                     <td className="px-4 py-3">
-                      <select
-                        value={s.estado}
-                        disabled={deshabilitado}
-                        onChange={(e) => cambiarEstado(s.id, e.target.value)}
-                        className={`rounded-full border-none px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${ESTILO_ESTADO[s.estado] ?? ""}`}
-                      >
-                        {ESTADOS.map((e) => (
-                          <option key={e} value={e}>
-                            {e}
-                          </option>
-                        ))}
-                      </select>
+                      {s.estado === "Pagado" ? (
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-medium ${ESTILO_ESTADO.Pagado}`}
+                          >
+                            Pagado
+                          </span>
+                          <button
+                            type="button"
+                            disabled={deshabilitado}
+                            onClick={() => cambiarEstado(s.id, "Autorizado")}
+                            className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50 dark:text-red-400"
+                          >
+                            Revertir Pago
+                          </button>
+                        </div>
+                      ) : (
+                        <select
+                          value={s.estado}
+                          disabled={deshabilitado}
+                          onChange={(e) => cambiarEstado(s.id, e.target.value)}
+                          className={`rounded-full border-none px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${ESTILO_ESTADO[s.estado] ?? ""}`}
+                        >
+                          {ESTADOS.map((e) => (
+                            <option key={e} value={e}>
+                              {e}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">

@@ -2,9 +2,21 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDownCircle, ArrowUpCircle, Landmark, Pencil, Plus, Wallet, X } from "lucide-react";
+import {
+  ArrowDownCircle,
+  ArrowUpCircle,
+  Check,
+  Landmark,
+  Pencil,
+  Plus,
+  Trash2,
+  Wallet,
+  X,
+} from "lucide-react";
 import {
   actualizarSaldoInicial,
+  editarMovimiento,
+  eliminarMovimiento,
   procesarPagoSolicitud,
   registrarMovimiento,
 } from "@/app/actions/tesoreria";
@@ -82,6 +94,11 @@ export default function TableroTesoreria({
   const [procesando, setProcesando] = useState(false);
 
   const [error, setError] = useState("");
+
+  const [editandoMovId, setEditandoMovId] = useState(null);
+  const [montoEditado, setMontoEditado] = useState("");
+  const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+  const [eliminandoMovId, setEliminandoMovId] = useState(null);
 
   const cuentaActiva = cuentas.find((c) => c.id === cuentaActivaId) ?? null;
 
@@ -184,6 +201,75 @@ export default function TableroTesoreria({
       )
     );
     setModalAbierto(false);
+  }
+
+  function iniciarEdicionMonto(movimiento) {
+    setEditandoMovId(movimiento.id);
+    setMontoEditado(String(movimiento.monto));
+    setError("");
+  }
+
+  function cancelarEdicionMonto() {
+    setEditandoMovId(null);
+  }
+
+  async function guardarEdicionMonto(movimiento) {
+    const monto = parseFloat(montoEditado);
+    if (!(monto > 0)) {
+      setError("Captura un monto válido.");
+      return;
+    }
+
+    setGuardandoEdicion(true);
+    setError("");
+    const resultado = await editarMovimiento(movimiento.id, monto);
+    setGuardandoEdicion(false);
+
+    if (resultado.error) {
+      setError(resultado.error);
+      return;
+    }
+
+    setMovimientos((filas) =>
+      filas.map((f) =>
+        f.id === movimiento.id
+          ? { ...f, monto: resultado.movimiento.monto, saldo_resultante: resultado.movimiento.saldo_resultante }
+          : f
+      )
+    );
+    setCuentas((filas) =>
+      filas.map((c) =>
+        c.id === movimiento.cuenta_id ? { ...c, saldo_actual: resultado.movimiento.saldo_resultante } : c
+      )
+    );
+    setEditandoMovId(null);
+    router.refresh();
+  }
+
+  async function eliminarMovimientoBitacora(movimiento) {
+    if (
+      !window.confirm(
+        `¿Eliminar el movimiento "${movimiento.concepto}" por ${formatoMXN(movimiento.monto)}? Esta acción no se puede deshacer.`
+      )
+    ) {
+      return;
+    }
+
+    setEliminandoMovId(movimiento.id);
+    setError("");
+    const resultado = await eliminarMovimiento(movimiento.id);
+    setEliminandoMovId(null);
+
+    if (resultado.error) {
+      setError(resultado.error);
+      return;
+    }
+
+    setMovimientos((filas) => filas.filter((f) => f.id !== movimiento.id));
+    setCuentas((filas) =>
+      filas.map((c) => (c.id === movimiento.cuenta_id ? { ...c, saldo_actual: resultado.saldoActual } : c))
+    );
+    router.refresh();
   }
 
   function abrirModalPago(solicitud) {
@@ -329,12 +415,30 @@ export default function TableroTesoreria({
                 icono={<ArrowUpCircle size={15} className="text-green-600 dark:text-green-500" />}
                 movimientos={ingresos}
                 vacio="Sin ingresos registrados en el periodo."
+                editandoMovId={editandoMovId}
+                montoEditado={montoEditado}
+                setMontoEditado={setMontoEditado}
+                guardandoEdicion={guardandoEdicion}
+                eliminandoMovId={eliminandoMovId}
+                onIniciarEdicion={iniciarEdicionMonto}
+                onCancelarEdicion={cancelarEdicionMonto}
+                onGuardarEdicion={guardarEdicionMonto}
+                onEliminar={eliminarMovimientoBitacora}
               />
               <TablaMovimientos
                 titulo="Egresos (Salidas)"
                 icono={<ArrowDownCircle size={15} className="text-red-600 dark:text-red-500" />}
                 movimientos={egresos}
                 vacio="Sin egresos registrados en el periodo."
+                editandoMovId={editandoMovId}
+                montoEditado={montoEditado}
+                setMontoEditado={setMontoEditado}
+                guardandoEdicion={guardandoEdicion}
+                eliminandoMovId={eliminandoMovId}
+                onIniciarEdicion={iniciarEdicionMonto}
+                onCancelarEdicion={cancelarEdicionMonto}
+                onGuardarEdicion={guardarEdicionMonto}
+                onEliminar={eliminarMovimientoBitacora}
               />
             </div>
           </section>
@@ -611,8 +715,22 @@ export default function TableroTesoreria({
   );
 }
 
-/** Tabla compacta de movimientos (ingresos o egresos) para la bitácora del mes. */
-function TablaMovimientos({ titulo, icono, movimientos, vacio }) {
+/** Tabla compacta de movimientos (ingresos o egresos) para la bitácora del mes, con edición/eliminación por fila. */
+function TablaMovimientos({
+  titulo,
+  icono,
+  movimientos,
+  vacio,
+  editandoMovId,
+  montoEditado,
+  setMontoEditado,
+  guardandoEdicion,
+  eliminandoMovId,
+  onIniciarEdicion,
+  onCancelarEdicion,
+  onGuardarEdicion,
+  onEliminar,
+}) {
   return (
     <div className="flex flex-col gap-3">
       <h3 className="flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
@@ -625,7 +743,7 @@ function TablaMovimientos({ titulo, icono, movimientos, vacio }) {
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-black/[.08] dark:border-white/[.145]">
-          <table className="w-full min-w-[640px] text-xs">
+          <table className="w-full min-w-[720px] text-xs">
             <thead>
               <tr className="border-b border-black/[.08] bg-black/[.03] text-left font-medium uppercase tracking-wide text-zinc-500 dark:border-white/[.145] dark:bg-white/[.04] dark:text-zinc-400">
                 <th className="px-3 py-2">Fecha</th>
@@ -635,24 +753,86 @@ function TablaMovimientos({ titulo, icono, movimientos, vacio }) {
                 <th className="px-3 py-2 text-right">Monto</th>
                 <th className="px-3 py-2 text-right">Saldo</th>
                 <th className="px-3 py-2">Comentarios</th>
+                <th className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
-              {movimientos.map((m) => (
-                <tr key={m.id} className="border-b border-black/[.08] last:border-b-0 dark:border-white/[.145]">
-                  <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{formatoFecha(m.fecha)}</td>
-                  <td className="px-3 py-2">{m.razon_social || "—"}</td>
-                  <td className="px-3 py-2">{m.concepto}</td>
-                  <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
-                    {m.proyectos ? `${m.proyectos.codigo}` : "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right font-medium">{formatoMXN(m.monto)}</td>
-                  <td className="px-3 py-2 text-right text-zinc-600 dark:text-zinc-400">
-                    {formatoMXN(m.saldo_resultante)}
-                  </td>
-                  <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{m.comentarios || "—"}</td>
-                </tr>
-              ))}
+              {movimientos.map((m) => {
+                const editando = editandoMovId === m.id;
+                const eliminando = eliminandoMovId === m.id;
+                return (
+                  <tr key={m.id} className="border-b border-black/[.08] last:border-b-0 dark:border-white/[.145]">
+                    <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{formatoFecha(m.fecha)}</td>
+                    <td className="px-3 py-2">{m.razon_social || "—"}</td>
+                    <td className="px-3 py-2">{m.concepto}</td>
+                    <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
+                      {m.proyectos ? `${m.proyectos.codigo}` : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right font-medium">
+                      {editando ? (
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          autoFocus
+                          disabled={guardandoEdicion}
+                          value={montoEditado}
+                          onChange={(e) => setMontoEditado(e.target.value)}
+                          className="w-24 rounded border border-black/[.08] bg-transparent px-1.5 py-0.5 text-right text-xs dark:border-white/[.145]"
+                        />
+                      ) : (
+                        formatoMXN(m.monto)
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right text-zinc-600 dark:text-zinc-400">
+                      {formatoMXN(m.saldo_resultante)}
+                    </td>
+                    <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{m.comentarios || "—"}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-end gap-2">
+                        {editando ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={guardandoEdicion}
+                              onClick={() => onGuardarEdicion(m)}
+                              className="text-green-600 hover:text-green-700 disabled:opacity-50 dark:text-green-500"
+                            >
+                              <Check size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={guardandoEdicion}
+                              onClick={onCancelarEdicion}
+                              className="text-zinc-400 hover:text-zinc-600 disabled:opacity-50 dark:hover:text-zinc-200"
+                            >
+                              <X size={13} />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => onIniciarEdicion(m)}
+                              className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={eliminando}
+                              onClick={() => onEliminar(m)}
+                              className="text-zinc-400 hover:text-red-600 disabled:opacity-50 dark:hover:text-red-400"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
