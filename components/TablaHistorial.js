@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, FileText } from "lucide-react";
+import ModalVisorPDF from "@/components/ModalVisorPDF";
+import CeldaTruncada from "@/components/CeldaTruncada";
 
 const MESES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -33,6 +35,7 @@ export default function TablaHistorial({ solicitudes, proyectos }) {
   const [mes, setMes] = useState("");
   const [anio, setAnio] = useState(String(hoy.getFullYear()));
   const [exportando, setExportando] = useState(false);
+  const [pdfSolicitudId, setPdfSolicitudId] = useState(null);
 
   const aniosDisponibles = useMemo(() => {
     const anios = new Set([new Date().getFullYear()]);
@@ -136,7 +139,7 @@ export default function TablaHistorial({ solicitudes, proyectos }) {
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-black/[.08] dark:border-white/[.145]">
-          <table className="w-full min-w-[1100px] text-sm">
+          <table className="w-full min-w-[1200px] text-sm">
             <thead>
               <tr className="border-b border-black/[.08] bg-black/[.03] text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:border-white/[.145] dark:bg-white/[.04] dark:text-zinc-400">
                 <th className="px-4 py-3">Folio</th>
@@ -148,6 +151,7 @@ export default function TablaHistorial({ solicitudes, proyectos }) {
                 <th className="px-4 py-3">Estado</th>
                 <th className="px-4 py-3">Fecha Programada</th>
                 <th className="px-4 py-3">Fecha Pago</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -160,7 +164,9 @@ export default function TablaHistorial({ solicitudes, proyectos }) {
                   <td className="px-4 py-3">
                     {s.proyectos?.codigo} — {s.proyectos?.nombre}
                   </td>
-                  <td className="px-4 py-3">{s.proveedores?.razon_social}</td>
+                  <td className="px-4 py-3">
+                    <CeldaTruncada texto={s.proveedores?.razon_social} titulo="Proveedor" />
+                  </td>
                   <td className="px-4 py-3">{s.metodo_pago}</td>
                   <td className="px-4 py-3">{s.solicitante}</td>
                   <td className="px-4 py-3 text-right font-medium">{formatoMXN(s.total)}</td>
@@ -177,12 +183,27 @@ export default function TablaHistorial({ solicitudes, proyectos }) {
                   <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
                     {formatoFecha(s.fecha_pago)}
                   </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setPdfSolicitudId(s.id)}
+                      className="flex items-center gap-1 text-xs text-zinc-500 hover:underline dark:text-zinc-400"
+                    >
+                      <FileText size={13} /> Ver PDF
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      <ModalVisorPDF
+        solicitudId={pdfSolicitudId}
+        open={pdfSolicitudId !== null}
+        onClose={() => setPdfSolicitudId(null)}
+      />
     </div>
   );
 }

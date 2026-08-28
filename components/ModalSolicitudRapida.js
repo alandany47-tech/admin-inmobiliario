@@ -114,7 +114,7 @@ export default function ModalSolicitudRapida({ proyectos, proveedores, wbsCatalo
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 px-4">
       <form
         onSubmit={handleSubmit}
-        className="flex w-full max-w-lg flex-col gap-4 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-950"
+        className="flex w-full max-w-lg flex-col gap-4 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-900"
       >
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold text-black dark:text-zinc-50">

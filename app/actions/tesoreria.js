@@ -24,7 +24,7 @@ export async function getMovimientosTesoreria() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("movimientos_tesoreria")
-    .select("*, proyectos(codigo, nombre)")
+    .select("*, proyectos(codigo, nombre), solicitudes_pago(estado)")
     .order("fecha", { ascending: false })
     .order("created_at", { ascending: false });
 
@@ -172,4 +172,31 @@ export async function procesarPagoSolicitud(solicitudId, fechaPago) {
   revalidatePath("/tesoreria");
   revalidatePath("/historial");
   return { ok: true };
+}
+
+/**
+ * Revierte el pago de una solicitud desde la bitácora de Tesorería: llama a
+ * la función atómica de reversión (por defecto regresa a 'Por Autorizar', ver
+ * 0013_revertir_a_por_autorizar.sql) y devuelve las cuentas y movimientos
+ * frescos para refrescar el estado local sin depender de un patch incremental.
+ */
+export async function revertirPagoSolicitud(solicitudId) {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("revertir_pago_solicitud", {
+    p_solicitud_id: solicitudId,
+  });
+
+  if (error) {
+    return { error: `No se pudo revertir el pago: ${error.message}` };
+  }
+
+  const [cuentas, movimientos] = await Promise.all([getCuentasBancarias(), getMovimientosTesoreria()]);
+
+  revalidatePath("/tesoreria");
+  revalidatePath("/historial");
+  revalidatePath("/control-maestro");
+  revalidatePath("/autorizaciones");
+  revalidatePath("/dashboard");
+  revalidatePath("/wbs");
+  return { ok: true, cuentas, movimientos };
 }

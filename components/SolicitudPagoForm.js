@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, CheckCircle2, Plus, Trash2, Users, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CalendarClock, CheckCircle2, Plus, Search, Trash2, Users, X } from "lucide-react";
 import { crearSolicitudPago, getFolioPreview } from "@/app/actions/solicitudes";
 
 const TASA_IVA = 0.16;
@@ -106,28 +106,37 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
       ),
     [wbsCatalog, form.proyectoId]
   );
-  const categoriasWbs = useMemo(
-    () => [...new Set(wbsDisponible.map((w) => w.categoria))],
-    [wbsDisponible]
-  );
-  const partidasWbs = useMemo(
-    () => wbsDisponible.filter((w) => w.categoria === form.wbsCategoria).map((w) => w.partida),
-    [wbsDisponible, form.wbsCategoria]
-  );
+
+  const [wbsBusqueda, setWbsBusqueda] = useState("");
+  const [wbsAbierto, setWbsAbierto] = useState(false);
+  const wbsBoxRef = useRef(null);
+
+  const wbsFiltrado = useMemo(() => {
+    const termino = wbsBusqueda.trim().toLowerCase();
+    if (!termino) return wbsDisponible;
+    return wbsDisponible.filter((w) =>
+      `${w.codigo ?? ""} ${w.categoria} ${w.partida}`.toLowerCase().includes(termino)
+    );
+  }, [wbsDisponible, wbsBusqueda]);
+
+  useEffect(() => {
+    function alClickFuera(e) {
+      if (wbsBoxRef.current && !wbsBoxRef.current.contains(e.target)) {
+        setWbsAbierto(false);
+      }
+    }
+    document.addEventListener("mousedown", alClickFuera);
+    return () => document.removeEventListener("mousedown", alClickFuera);
+  }, []);
 
   function actualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
   }
 
-  function actualizarWbsCategoria(valor) {
-    setForm((f) => ({ ...f, wbsCategoria: valor, wbsPartida: "", wbsCatalogId: null }));
-  }
-
-  function actualizarWbsPartida(valor) {
-    const entrada = wbsDisponible.find(
-      (w) => w.categoria === form.wbsCategoria && w.partida === valor
-    );
-    setForm((f) => ({ ...f, wbsPartida: valor, wbsCatalogId: entrada?.id ?? null }));
+  function seleccionarWbs(entrada) {
+    setForm((f) => ({ ...f, wbsCategoria: entrada.categoria, wbsPartida: entrada.partida, wbsCatalogId: entrada.id }));
+    setWbsBusqueda(`${entrada.codigo ? entrada.codigo + " · " : ""}${entrada.categoria} — ${entrada.partida}`);
+    setWbsAbierto(false);
   }
 
   function actualizarProveedorNuevo(campo, valor) {
@@ -260,7 +269,7 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
     <div className="relative">
       <form
         onSubmit={handleSubmit}
-        className="flex flex-col gap-8 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-950"
+        className="flex flex-col gap-8 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-900"
       >
         {/* Encabezado */}
         <section className="flex flex-col gap-4">
@@ -462,38 +471,48 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
           <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             Clasificación WBS
           </h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <label className={labelClase}>WBS Categoría</label>
-              <select
-                className={inputClase}
-                value={form.wbsCategoria}
-                onChange={(e) => actualizarWbsCategoria(e.target.value)}
-              >
-                <option value="">Selecciona una categoría…</option>
-                {categoriasWbs.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+          <div className="relative flex flex-col gap-1.5 sm:max-w-md" ref={wbsBoxRef}>
+            <label className={labelClase}>Partida WBS</label>
+            <div className="relative">
+              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+              <input
+                type="text"
+                placeholder="Busca por código, categoría o partida…"
+                className={`${inputClase} w-full pl-8`}
+                value={wbsBusqueda}
+                onFocus={() => setWbsAbierto(true)}
+                onChange={(e) => {
+                  setWbsBusqueda(e.target.value);
+                  setWbsAbierto(true);
+                  if (form.wbsCatalogId) {
+                    setForm((f) => ({ ...f, wbsCategoria: "", wbsPartida: "", wbsCatalogId: null }));
+                  }
+                }}
+              />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label className={labelClase}>WBS Partida</label>
-              <select
-                className={inputClase}
-                value={form.wbsPartida}
-                onChange={(e) => actualizarWbsPartida(e.target.value)}
-                disabled={!form.wbsCategoria}
-              >
-                <option value="">Selecciona una partida…</option>
-                {partidasWbs.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </div>
+
+            {wbsAbierto && (
+              <div className="absolute top-full z-10 mt-1 max-h-64 w-full overflow-y-auto rounded border border-black/[.08] bg-white shadow-lg dark:border-white/[.145] dark:bg-zinc-900">
+                {wbsFiltrado.length === 0 ? (
+                  <p className="px-3 py-2.5 text-sm text-zinc-500 dark:text-zinc-400">Sin resultados.</p>
+                ) : (
+                  wbsFiltrado.map((w) => (
+                    <button
+                      key={w.id}
+                      type="button"
+                      onClick={() => seleccionarWbs(w)}
+                      className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+                    >
+                      <span className="font-medium text-black dark:text-zinc-50">
+                        {w.codigo ? `${w.codigo} · ` : ""}
+                        {w.categoria}
+                      </span>
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400">{w.partida}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         </section>
 

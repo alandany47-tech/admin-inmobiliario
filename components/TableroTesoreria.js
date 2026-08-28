@@ -6,9 +6,11 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Check,
+  Download,
   Landmark,
   Pencil,
   Plus,
+  RotateCcw,
   Trash2,
   Wallet,
   X,
@@ -19,7 +21,9 @@ import {
   eliminarMovimiento,
   procesarPagoSolicitud,
   registrarMovimiento,
+  revertirPagoSolicitud,
 } from "@/app/actions/tesoreria";
+import CeldaTruncada from "@/components/CeldaTruncada";
 
 const ICONO_POR_TIPO = {
   Efectivo: Wallet,
@@ -99,6 +103,8 @@ export default function TableroTesoreria({
   const [montoEditado, setMontoEditado] = useState("");
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [eliminandoMovId, setEliminandoMovId] = useState(null);
+  const [revirtiendoId, setRevirtiendoId] = useState(null);
+  const [exportando, setExportando] = useState(false);
 
   const cuentaActiva = cuentas.find((c) => c.id === cuentaActivaId) ?? null;
 
@@ -156,6 +162,7 @@ export default function TableroTesoreria({
 
     setCuentas((filas) => filas.map((c) => (c.id === resultado.cuenta.id ? resultado.cuenta : c)));
     setEditandoSaldo(false);
+    router.refresh();
   }
 
   function abrirModalMovimiento() {
@@ -201,6 +208,7 @@ export default function TableroTesoreria({
       )
     );
     setModalAbierto(false);
+    router.refresh();
   }
 
   function iniciarEdicionMonto(movimiento) {
@@ -272,6 +280,52 @@ export default function TableroTesoreria({
     router.refresh();
   }
 
+  async function revertirPago(movimiento) {
+    if (
+      !window.confirm(
+        `¿Revertir el pago de la solicitud vinculada a este egreso? La solicitud regresará a "Por Autorizar".`
+      )
+    ) {
+      return;
+    }
+
+    setRevirtiendoId(movimiento.id);
+    setError("");
+    const resultado = await revertirPagoSolicitud(movimiento.solicitud_id);
+    setRevirtiendoId(null);
+
+    if (resultado.error) {
+      setError(resultado.error);
+      return;
+    }
+
+    setCuentas(resultado.cuentas);
+    setMovimientos(resultado.movimientos);
+    router.refresh();
+  }
+
+  async function exportarExcel() {
+    setExportando(true);
+    const XLSX = await import("xlsx");
+
+    const filas = movimientosCuenta.map((m) => ({
+      Fecha: m.fecha,
+      Tipo: m.tipo_movimiento === "ingreso" ? "Ingreso" : "Egreso",
+      "Razón Social": m.razon_social ?? "",
+      Concepto: m.concepto,
+      Proyecto: m.proyectos?.codigo ?? "",
+      Monto: m.monto,
+      "Saldo Resultante": m.saldo_resultante,
+      Comentarios: m.comentarios ?? "",
+    }));
+
+    const hoja = XLSX.utils.json_to_sheet(filas);
+    const libro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(libro, hoja, "Movimientos");
+    XLSX.writeFile(libro, `tesoreria-${cuentaActiva.nombre}-${hoyISO()}.xlsx`);
+    setExportando(false);
+  }
+
   function abrirModalPago(solicitud) {
     setSolicitudActiva(solicitud);
     setFechaPago(hoyISO());
@@ -322,7 +376,7 @@ export default function TableroTesoreria({
 
       {cuentaActiva && (
         <>
-          <section className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-black/[.08] bg-white p-5 dark:border-white/[.145] dark:bg-zinc-950">
+          <section className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-black/[.08] bg-white p-5 dark:border-white/[.145] dark:bg-zinc-900">
             <div className="flex flex-wrap gap-8">
               <div className="flex flex-col">
                 <span className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
@@ -377,13 +431,23 @@ export default function TableroTesoreria({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={abrirModalMovimiento}
-              className="flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
-            >
-              <Plus size={15} /> Registrar Movimiento
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={exportarExcel}
+                disabled={exportando || movimientosCuenta.length === 0}
+                className="flex items-center gap-1.5 rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+              >
+                <Download size={15} /> Exportar a Excel
+              </button>
+              <button
+                type="button"
+                onClick={abrirModalMovimiento}
+                className="flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
+              >
+                <Plus size={15} /> Registrar Movimiento
+              </button>
+            </div>
           </section>
 
           <section className="flex flex-col gap-4">
@@ -439,6 +503,8 @@ export default function TableroTesoreria({
                 onCancelarEdicion={cancelarEdicionMonto}
                 onGuardarEdicion={guardarEdicionMonto}
                 onEliminar={eliminarMovimientoBitacora}
+                revirtiendoId={revirtiendoId}
+                onRevertir={revertirPago}
               />
             </div>
           </section>
@@ -503,7 +569,7 @@ export default function TableroTesoreria({
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 px-4">
           <form
             onSubmit={guardarMovimiento}
-            className="flex w-full max-w-lg flex-col gap-4 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-950"
+            className="flex w-full max-w-lg flex-col gap-4 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-900"
           >
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-black dark:text-zinc-50">
@@ -638,7 +704,7 @@ export default function TableroTesoreria({
 
       {solicitudActiva && (
         <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 px-4">
-          <div className="flex w-full max-w-md flex-col gap-5 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-950">
+          <div className="flex w-full max-w-md flex-col gap-5 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-900">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-black dark:text-zinc-50">
                 Confirmar Pago
@@ -730,6 +796,8 @@ function TablaMovimientos({
   onCancelarEdicion,
   onGuardarEdicion,
   onEliminar,
+  revirtiendoId,
+  onRevertir,
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -763,8 +831,12 @@ function TablaMovimientos({
                 return (
                   <tr key={m.id} className="border-b border-black/[.08] last:border-b-0 dark:border-white/[.145]">
                     <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{formatoFecha(m.fecha)}</td>
-                    <td className="px-3 py-2">{m.razon_social || "—"}</td>
-                    <td className="px-3 py-2">{m.concepto}</td>
+                    <td className="px-3 py-2">
+                      <CeldaTruncada texto={m.razon_social} titulo="Razón Social" />
+                    </td>
+                    <td className="px-3 py-2">
+                      <CeldaTruncada texto={m.concepto} titulo="Concepto" />
+                    </td>
                     <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
                       {m.proyectos ? `${m.proyectos.codigo}` : "—"}
                     </td>
@@ -811,6 +883,17 @@ function TablaMovimientos({
                           </>
                         ) : (
                           <>
+                            {onRevertir && m.solicitud_id && m.solicitudes_pago?.estado === "Pagado" && (
+                              <button
+                                type="button"
+                                disabled={revirtiendoId === m.id}
+                                onClick={() => onRevertir(m)}
+                                title="Revertir Pago"
+                                className="text-red-600 hover:text-red-700 disabled:opacity-50 dark:text-red-400"
+                              >
+                                <RotateCcw size={13} />
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => onIniciarEdicion(m)}

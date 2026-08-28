@@ -61,7 +61,7 @@ export default function ModalImportarWbs({ proyectoId, onImportado, onCerrar }) 
 
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 px-4">
-      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col gap-4 overflow-y-auto rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-950">
+      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col gap-4 overflow-y-auto rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-900">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold text-black dark:text-zinc-50">
             Importar WBS desde Excel

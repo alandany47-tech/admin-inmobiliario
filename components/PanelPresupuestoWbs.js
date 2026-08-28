@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Upload } from "lucide-react";
+import { ChevronDown, ChevronRight, Pencil, Upload } from "lucide-react";
 import { getWbsPresupuesto, actualizarPresupuestoWbs, renombrarPartidaWbs } from "@/app/actions/wbs";
 import ModalImportarWbs from "@/components/ModalImportarWbs";
 
@@ -81,6 +81,7 @@ function NodoWbs({
   onCancelarRenombre,
   onGuardarPresupuesto,
   onGuardarRenombre,
+  modoEdicion,
 }) {
   const esHoja = nodo.hijos.length === 0;
   const expandido = expandidos.has(nodo.id);
@@ -98,7 +99,10 @@ function NodoWbs({
   return (
     <>
       <tr className="border-b border-black/[.08] last:border-b-0 dark:border-white/[.145]">
-        <td className="py-2 pr-4" style={{ paddingLeft: `${1 + nivel * 1.25}rem` }}>
+        <td className="py-2 pr-4 pl-4 font-mono text-xs text-zinc-500 dark:text-zinc-400">
+          {nodo.codigo || "—"}
+        </td>
+        <td className="py-2 pr-4" style={{ paddingLeft: `${nivel * 1.25}rem` }}>
           <div className="flex items-center gap-1.5">
             {!esHoja && (
               <button
@@ -115,20 +119,16 @@ function NodoWbs({
                 value={categoria}
                 onChange={(e) => setCategoria(e.target.value)}
               />
-            ) : esHoja ? (
+            ) : esHoja && modoEdicion ? (
               <button
                 type="button"
                 onClick={() => onIniciarRenombre(nodo.id)}
                 className="text-left hover:underline"
               >
-                {nodo.codigo ? `${nodo.codigo} · ` : ""}
                 {nodo.categoria}
               </button>
             ) : (
-              <span className="font-medium text-black dark:text-zinc-50">
-                {nodo.codigo ? `${nodo.codigo} · ` : ""}
-                {nodo.categoria}
-              </span>
+              <span className="font-medium text-black dark:text-zinc-50">{nodo.categoria}</span>
             )}
           </div>
         </td>
@@ -160,7 +160,7 @@ function NodoWbs({
           )}
         </td>
         <td className="px-4 py-2 text-right">
-          {esHoja ? (
+          {esHoja && modoEdicion ? (
             <input
               type="number"
               min="0"
@@ -172,7 +172,7 @@ function NodoWbs({
               onBlur={(e) => onGuardarPresupuesto(nodo.id, e.target.value)}
             />
           ) : (
-            formatoMXN(nodo.presupuestoAgg)
+            formatoMXN(esHoja ? nodo.presupuesto : nodo.presupuestoAgg)
           )}
         </td>
         <td className="px-4 py-2 text-right">
@@ -210,6 +210,7 @@ function NodoWbs({
             onCancelarRenombre={onCancelarRenombre}
             onGuardarPresupuesto={onGuardarPresupuesto}
             onGuardarRenombre={onGuardarRenombre}
+            modoEdicion={modoEdicion}
           />
         ))}
     </>
@@ -218,7 +219,7 @@ function NodoWbs({
 
 function TarjetaKpi({ titulo, valor, negativo }) {
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-black/[.08] bg-white p-4 dark:border-white/[.145] dark:bg-zinc-950">
+    <div className="flex flex-col gap-1 rounded-lg border border-black/[.08] bg-white p-4 dark:border-white/[.145] dark:bg-zinc-900">
       <span className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
         {titulo}
       </span>
@@ -300,6 +301,7 @@ export default function PanelPresupuestoWbs({ proyectos }) {
   const [renombrando, setRenombrando] = useState(null);
   const [vista, setVista] = useState("arbol");
   const [expandidos, setExpandidos] = useState(new Set());
+  const [modoEdicion, setModoEdicion] = useState(false);
 
   useEffect(() => {
     if (!proyectoId) {
@@ -414,14 +416,28 @@ export default function PanelPresupuestoWbs({ proyectos }) {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setModalAbierto(true)}
-          disabled={!proyectoId}
-          className="flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] disabled:opacity-50 dark:hover:bg-[#ccc]"
-        >
-          <Upload size={15} /> Importar WBS desde Excel
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setModoEdicion((m) => !m)}
+            disabled={vista !== "arbol"}
+            className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
+              modoEdicion
+                ? "bg-foreground text-background"
+                : "border border-black/[.08] text-zinc-600 hover:bg-black/[.04] dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+            }`}
+          >
+            <Pencil size={15} /> {modoEdicion ? "Salir de Modo Edición" : "Editar Presupuesto"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setModalAbierto(true)}
+            disabled={!proyectoId}
+            className="flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] disabled:opacity-50 dark:hover:bg-[#ccc]"
+          >
+            <Upload size={15} /> Importar WBS desde Excel
+          </button>
+        </div>
       </div>
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
@@ -442,10 +458,11 @@ export default function PanelPresupuestoWbs({ proyectos }) {
         />
       ) : (
         <div className="overflow-x-auto rounded-lg border border-black/[.08] dark:border-white/[.145]">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full min-w-[1000px] text-sm">
             <thead>
               <tr className="border-b border-black/[.08] bg-black/[.03] text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:border-white/[.145] dark:bg-white/[.04] dark:text-zinc-400">
-                <th className="py-3 pr-4 pl-4">Categoría</th>
+                <th className="py-3 pr-4 pl-4">Índice / Código</th>
+                <th className="px-4 py-3">Categoría</th>
                 <th className="px-4 py-3">Partida</th>
                 <th className="px-4 py-3 text-right">Presupuesto</th>
                 <th className="px-4 py-3 text-right">Ejercido</th>
@@ -460,6 +477,7 @@ export default function PanelPresupuestoWbs({ proyectos }) {
                 return (
                   <Fragment key={claveGrupo}>
                     <tr className="border-b border-black/[.08] bg-black/[.02] dark:border-white/[.145] dark:bg-white/[.03]">
+                      <td className="px-4 py-2.5" />
                       <td colSpan={2} className="px-4 py-2.5">
                         <button
                           type="button"
@@ -493,6 +511,7 @@ export default function PanelPresupuestoWbs({ proyectos }) {
                           onCancelarRenombre={() => setRenombrando(null)}
                           onGuardarPresupuesto={guardarPresupuesto}
                           onGuardarRenombre={guardarRenombre}
+                          modoEdicion={modoEdicion}
                         />
                       ))}
                   </Fragment>

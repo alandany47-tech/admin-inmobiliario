@@ -7,7 +7,7 @@ function formatoMXN(valor) {
 
 function KpiCard({ icono: Icono, etiqueta, children }) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-black/[.08] bg-white p-5 dark:border-white/[.145] dark:bg-zinc-950">
+    <div className="flex flex-col gap-3 rounded-lg border border-black/[.08] bg-white p-5 dark:border-white/[.145] dark:bg-zinc-900">
       <div className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400">
         <Icono size={16} />
         <span className="text-xs font-medium uppercase tracking-wide">{etiqueta}</span>
@@ -86,7 +86,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-col flex-1 items-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex w-full max-w-6xl flex-col gap-8 py-16 px-8">
+      <main className="flex w-full max-w-7xl mx-auto flex-col gap-8 py-16 px-4">
         <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
           Dashboard Ejecutivo
         </h1>
@@ -123,7 +123,7 @@ export default async function DashboardPage() {
           </KpiCard>
         </section>
 
-        <section className="flex flex-col gap-4 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-950">
+        <section className="flex flex-col gap-4 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-900">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             Desglose Porcentual por Proyecto
           </h2>
@@ -143,7 +143,7 @@ export default async function DashboardPage() {
           )}
         </section>
 
-        <section className="flex flex-col gap-4 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-950">
+        <section className="flex flex-col gap-4 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-900">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             Resumen de Gastos por Categoría WBS
           </h2>

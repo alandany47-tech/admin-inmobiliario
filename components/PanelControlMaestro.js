@@ -1,13 +1,16 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Download, FileText, Paperclip, Plus } from "lucide-react";
-import { cambiarEstadoGeneral, subirComprobante } from "@/app/actions/controlMaestro";
+import { useRouter } from "next/navigation";
+import { Download, FileText, Paperclip, Plus, Trash2 } from "lucide-react";
+import { cambiarEstadoGeneral, eliminarComprobante, subirComprobante } from "@/app/actions/controlMaestro";
 import ModalSolicitudRapida from "@/components/ModalSolicitudRapida";
 import ModalVisorPDF from "@/components/ModalVisorPDF";
+import CeldaTruncada from "@/components/CeldaTruncada";
 
-const ESTADOS = ["Por Autorizar", "Autorizado", "Pospuesto", "Pagado", "Cancelado"];
+const ESTADOS = ["Por Autorizar", "Autorizado", "Pospuesto"];
 const ESTADOS_FILTRO = ["Por Autorizar", "Autorizado", "Pospuesto"];
+const ESTADOS_FINALES = ["Pagado", "Cancelado"];
 const METODOS_PAGO = ["Efectivo", "Transferencia bancaria"];
 
 const ESTILO_ESTADO = {
@@ -38,6 +41,7 @@ export default function PanelControlMaestro({
   proveedores,
   wbsCatalog,
 }) {
+  const router = useRouter();
   const [solicitudes, setSolicitudes] = useState(solicitudesIniciales);
   const [proyectoId, setProyectoId] = useState("");
   const [proveedorId, setProveedorId] = useState("");
@@ -47,6 +51,7 @@ export default function PanelControlMaestro({
   const [pdfSolicitudId, setPdfSolicitudId] = useState(null);
   const [actualizando, setActualizando] = useState({});
   const [subiendo, setSubiendo] = useState({});
+  const [eliminandoComprobanteId, setEliminandoComprobanteId] = useState(null);
   const [error, setError] = useState("");
   const [exportando, setExportando] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -80,6 +85,7 @@ export default function PanelControlMaestro({
               : f
           )
         );
+        router.refresh();
       }
       setActualizando((a) => ({ ...a, [id]: false }));
     });
@@ -100,8 +106,28 @@ export default function PanelControlMaestro({
       setSolicitudes((filas) =>
         filas.map((f) => (f.id === id ? { ...f, comprobante_url: resultado.url } : f))
       );
+      router.refresh();
     }
     setSubiendo((s) => ({ ...s, [id]: false }));
+  }
+
+  async function eliminarArchivo(id) {
+    if (!window.confirm("¿Eliminar el comprobante de pago? Esta acción no se puede deshacer.")) {
+      return;
+    }
+
+    setEliminandoComprobanteId(id);
+    setError("");
+    const resultado = await eliminarComprobante(id);
+    setEliminandoComprobanteId(null);
+
+    if (resultado.error) {
+      setError(resultado.error);
+      return;
+    }
+
+    setSolicitudes((filas) => filas.map((f) => (f.id === id ? { ...f, comprobante_url: null } : f)));
+    router.refresh();
   }
 
   function solicitudCreada() {
@@ -314,26 +340,18 @@ export default function PanelControlMaestro({
                     <td className="px-4 py-3">
                       {s.proyectos?.codigo} — {s.proyectos?.nombre}
                     </td>
-                    <td className="px-4 py-3">{s.proveedores?.razon_social}</td>
+                    <td className="px-4 py-3">
+                      <CeldaTruncada texto={s.proveedores?.razon_social} titulo="Proveedor" />
+                    </td>
                     <td className="px-4 py-3">{s.metodo_pago}</td>
                     <td className="px-4 py-3 text-right font-medium">{formatoMXN(s.total)}</td>
                     <td className="px-4 py-3">
-                      {s.estado === "Pagado" ? (
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`rounded-full px-2.5 py-1 text-xs font-medium ${ESTILO_ESTADO.Pagado}`}
-                          >
-                            Pagado
-                          </span>
-                          <button
-                            type="button"
-                            disabled={deshabilitado}
-                            onClick={() => cambiarEstado(s.id, "Autorizado")}
-                            className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50 dark:text-red-400"
-                          >
-                            Revertir Pago
-                          </button>
-                        </div>
+                      {ESTADOS_FINALES.includes(s.estado) ? (
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${ESTILO_ESTADO[s.estado] ?? ""}`}
+                        >
+                          {s.estado}
+                        </span>
                       ) : (
                         <select
                           value={s.estado}
@@ -361,14 +379,24 @@ export default function PanelControlMaestro({
                           />
                         </label>
                         {s.comprobante_url && (
-                          <a
-                            href={s.comprobante_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-zinc-500 hover:underline dark:text-zinc-400"
-                          >
-                            Ver
-                          </a>
+                          <>
+                            <a
+                              href={s.comprobante_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-zinc-500 hover:underline dark:text-zinc-400"
+                            >
+                              Ver
+                            </a>
+                            <button
+                              type="button"
+                              disabled={eliminandoComprobanteId === s.id}
+                              onClick={() => eliminarArchivo(s.id)}
+                              className="text-zinc-400 hover:text-red-600 disabled:opacity-50 dark:hover:text-red-400"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>

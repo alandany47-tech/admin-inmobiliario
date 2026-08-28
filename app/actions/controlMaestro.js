@@ -123,3 +123,40 @@ export async function subirComprobante(solicitudId, formData) {
   revalidatePath("/control-maestro");
   return { ok: true, url: publicUrl };
 }
+
+/** Elimina el comprobante de pago del bucket "comprobantes" y limpia su referencia en la solicitud. */
+export async function eliminarComprobante(solicitudId) {
+  const supabase = await createClient();
+
+  const { data: solicitud, error: errorConsulta } = await supabase
+    .from("solicitudes_pago")
+    .select("comprobante_url")
+    .eq("id", solicitudId)
+    .single();
+
+  if (errorConsulta) {
+    return { error: `No se pudo consultar la solicitud: ${errorConsulta.message}` };
+  }
+
+  if (solicitud.comprobante_url) {
+    const ruta = solicitud.comprobante_url.split("/comprobantes/")[1];
+    if (ruta) {
+      const { error: errorBorrado } = await supabase.storage.from("comprobantes").remove([ruta]);
+      if (errorBorrado) {
+        return { error: `No se pudo eliminar el archivo: ${errorBorrado.message}` };
+      }
+    }
+  }
+
+  const { error: errorUpdate } = await supabase
+    .from("solicitudes_pago")
+    .update({ comprobante_url: null })
+    .eq("id", solicitudId);
+
+  if (errorUpdate) {
+    return { error: `No se pudo limpiar la referencia del comprobante: ${errorUpdate.message}` };
+  }
+
+  revalidatePath("/control-maestro");
+  return { ok: true };
+}

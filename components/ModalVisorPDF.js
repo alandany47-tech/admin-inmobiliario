@@ -75,7 +75,7 @@ export default function ModalVisorPDF({ solicitudId, open, onClose }) {
       onClick={onClose}
     >
       <div
-        className="flex h-full w-full max-w-4xl flex-col rounded-lg bg-white shadow-xl dark:bg-zinc-950"
+        className="flex h-full w-full max-w-4xl flex-col rounded-lg bg-white shadow-xl dark:bg-zinc-900"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-black/[.08] px-4 py-3 dark:border-white/[.145]">

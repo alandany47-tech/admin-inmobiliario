@@ -12,7 +12,7 @@ export async function getWbsCatalog() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("wbs_catalog")
-    .select("id, proyecto_id, categoria, partida")
+    .select("id, proyecto_id, categoria, partida, codigo")
     .order("categoria", { ascending: true })
     .order("partida", { ascending: true });
 
