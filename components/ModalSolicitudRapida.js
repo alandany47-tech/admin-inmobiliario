@@ -13,6 +13,7 @@ const FORM_VACIO = {
   solicitante: "",
   wbsCategoria: "",
   wbsPartida: "",
+  wbsCatalogId: null,
   descripcion: "",
   monto: "",
 };
@@ -52,6 +53,13 @@ export default function ModalSolicitudRapida({ proyectos, proveedores, wbsCatalo
     setForm((f) => ({ ...f, [campo]: valor }));
   }
 
+  function actualizarWbsPartida(valor) {
+    const entrada = wbsDisponible.find(
+      (w) => w.categoria === form.wbsCategoria && w.partida === valor
+    );
+    setForm((f) => ({ ...f, wbsPartida: valor, wbsCatalogId: entrada?.id ?? null }));
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
@@ -77,6 +85,7 @@ export default function ModalSolicitudRapida({ proyectos, proveedores, wbsCatalo
       numFactura: "",
       wbsCategoria: form.wbsCategoria,
       wbsPartida: form.wbsPartida,
+      wbsCatalogId: form.wbsCatalogId,
       partidas: [
         { cantidad: 1, descripcion: form.descripcion.trim(), precio_unitario: subtotal, subtotal },
       ],
@@ -185,7 +194,9 @@ export default function ModalSolicitudRapida({ proyectos, proveedores, wbsCatalo
             <select
               className={inputClase}
               value={form.wbsCategoria}
-              onChange={(e) => setForm((f) => ({ ...f, wbsCategoria: e.target.value, wbsPartida: "" }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, wbsCategoria: e.target.value, wbsPartida: "", wbsCatalogId: null }))
+              }
             >
               <option value="">Selecciona…</option>
               {categoriasWbs.map((c) => (
@@ -201,7 +212,7 @@ export default function ModalSolicitudRapida({ proyectos, proveedores, wbsCatalo
             <select
               className={inputClase}
               value={form.wbsPartida}
-              onChange={(e) => actualizarCampo("wbsPartida", e.target.value)}
+              onChange={(e) => actualizarWbsPartida(e.target.value)}
               disabled={!form.wbsCategoria}
             >
               <option value="">Selecciona…</option>

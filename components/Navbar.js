@@ -11,6 +11,7 @@ import {
   Table,
   TrendingUp,
   Users,
+  Wallet,
 } from "lucide-react";
 
 const ENLACES = [
@@ -20,6 +21,7 @@ const ENLACES = [
   { href: "/tesoreria", label: "Tesorería", icon: Landmark },
   { href: "/proveedores", label: "Proveedores", icon: Users },
   { href: "/control-maestro", label: "Control Maestro", icon: LayoutDashboard },
+  { href: "/wbs", label: "Presupuesto WBS", icon: Wallet },
   { href: "/historial", label: "Historial", icon: Table },
 ];
 

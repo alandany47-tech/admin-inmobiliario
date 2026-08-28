@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { CheckCircle2, Clock, FileText, XCircle } from "lucide-react";
 import { cambiarEstadoSolicitud } from "@/app/actions/autorizaciones";
+import ModalVisorPDF from "@/components/ModalVisorPDF";
 
 function formatoMXN(valor) {
   return Number(valor).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -18,6 +18,7 @@ export default function TablaAutorizaciones({ solicitudes: solicitudesIniciales 
   const [solicitudes, setSolicitudes] = useState(solicitudesIniciales);
   const [enProceso, setEnProceso] = useState(null);
   const [error, setError] = useState("");
+  const [pdfSolicitudId, setPdfSolicitudId] = useState(null);
   const [isPending, startTransition] = useTransition();
 
   function actualizarEstado(id, nuevoEstado) {
@@ -69,12 +70,13 @@ export default function TablaAutorizaciones({ solicitudes: solicitudesIniciales 
                   className="border-b border-black/[.08] last:border-b-0 dark:border-white/[.145]"
                 >
                   <td className="px-4 py-3 font-mono">
-                    <Link
-                      href={`/solicitud/${s.id}/pdf`}
+                    <button
+                      type="button"
+                      onClick={() => setPdfSolicitudId(s.id)}
                       className="flex items-center gap-1.5 text-blue-600 hover:underline dark:text-blue-400"
                     >
                       <FileText size={14} /> {s.folio}
-                    </Link>
+                    </button>
                   </td>
                   <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
                     {formatoFecha(s.created_at)}
@@ -120,6 +122,12 @@ export default function TablaAutorizaciones({ solicitudes: solicitudesIniciales 
           </tbody>
         </table>
       </div>
+
+      <ModalVisorPDF
+        solicitudId={pdfSolicitudId}
+        open={pdfSolicitudId !== null}
+        onClose={() => setPdfSolicitudId(null)}
+      />
     </div>
   );
 }

@@ -14,6 +14,7 @@ const FORM_VACIO = {
   numFactura: "",
   wbsCategoria: "",
   wbsPartida: "",
+  wbsCatalogId: null,
 };
 
 const PROVEEDOR_NUEVO_VACIO = {
@@ -119,7 +120,14 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
   }
 
   function actualizarWbsCategoria(valor) {
-    setForm((f) => ({ ...f, wbsCategoria: valor, wbsPartida: "" }));
+    setForm((f) => ({ ...f, wbsCategoria: valor, wbsPartida: "", wbsCatalogId: null }));
+  }
+
+  function actualizarWbsPartida(valor) {
+    const entrada = wbsDisponible.find(
+      (w) => w.categoria === form.wbsCategoria && w.partida === valor
+    );
+    setForm((f) => ({ ...f, wbsPartida: valor, wbsCatalogId: entrada?.id ?? null }));
   }
 
   function actualizarProveedorNuevo(campo, valor) {
@@ -211,6 +219,7 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
       numFactura: form.numFactura,
       wbsCategoria: form.wbsCategoria,
       wbsPartida: form.wbsPartida,
+      wbsCatalogId: form.wbsCatalogId,
       partidas: partidasValidas,
       aplicaIva,
       subtotal,
@@ -474,7 +483,7 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
               <select
                 className={inputClase}
                 value={form.wbsPartida}
-                onChange={(e) => actualizarCampo("wbsPartida", e.target.value)}
+                onChange={(e) => actualizarWbsPartida(e.target.value)}
                 disabled={!form.wbsCategoria}
               >
                 <option value="">Selecciona una partida…</option>

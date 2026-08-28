@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { Download, FileText, Paperclip, Plus } from "lucide-react";
 import { cambiarEstadoGeneral, subirComprobante } from "@/app/actions/controlMaestro";
 import ModalSolicitudRapida from "@/components/ModalSolicitudRapida";
+import ModalVisorPDF from "@/components/ModalVisorPDF";
 
 const ESTADOS = ["Por Autorizar", "Autorizado", "Pospuesto", "Pagado", "Cancelado"];
 const METODOS_PAGO = ["Efectivo", "Transferencia bancaria"];
@@ -43,6 +43,7 @@ export default function PanelControlMaestro({
   const [metodoPago, setMetodoPago] = useState("");
   const [estado, setEstado] = useState("");
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [pdfSolicitudId, setPdfSolicitudId] = useState(null);
   const [actualizando, setActualizando] = useState({});
   const [subiendo, setSubiendo] = useState({});
   const [error, setError] = useState("");
@@ -353,13 +354,13 @@ export default function PanelControlMaestro({
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <Link
-                        href={`/solicitud/${s.id}/pdf`}
-                        target="_blank"
+                      <button
+                        type="button"
+                        onClick={() => setPdfSolicitudId(s.id)}
                         className="flex items-center gap-1 text-xs text-zinc-500 hover:underline dark:text-zinc-400"
                       >
-                        <FileText size={13} /> PDF
-                      </Link>
+                        <FileText size={13} /> Ver PDF
+                      </button>
                     </td>
                   </tr>
                 );
@@ -378,6 +379,12 @@ export default function PanelControlMaestro({
           onCerrar={() => setModalAbierto(false)}
         />
       )}
+
+      <ModalVisorPDF
+        solicitudId={pdfSolicitudId}
+        open={pdfSolicitudId !== null}
+        onClose={() => setPdfSolicitudId(null)}
+      />
     </div>
   );
 }
