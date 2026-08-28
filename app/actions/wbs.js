@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { normalizarPartidaWbs } from "@/lib/wbs";
 
 // Pendiente para siguiente fase (ver 0007_wbs_presupuesto.sql):
 // - Backfill de wbs_catalog_id para solicitudes históricas.
@@ -12,7 +13,7 @@ export async function getWbsCatalog() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("wbs_catalog")
-    .select("id, proyecto_id, categoria, partida, codigo")
+    .select("id, proyecto_id, categoria, partida, codigo, parent_id")
     .order("categoria", { ascending: true })
     .order("partida", { ascending: true });
 
@@ -21,7 +22,7 @@ export async function getWbsCatalog() {
     return [];
   }
 
-  return data;
+  return data.map((w) => ({ ...w, ...normalizarPartidaWbs(w.partida, w.codigo) }));
 }
 
 /** Presupuesto/ejercido/disponible por partida WBS de un proyecto específico. */
@@ -36,6 +37,22 @@ export async function getWbsPresupuesto(proyectoId) {
 
   if (error) {
     console.error("Error al consultar presupuesto WBS:", error.message);
+    return [];
+  }
+
+  return data.map((w) => ({ ...w, ...normalizarPartidaWbs(w.partida, w.codigo) }));
+}
+
+/**
+ * Desglose de pagos de una partida WBS (o de todo su subárbol si tiene
+ * hijos): delega en la RPC recursiva get_desglose_pagos_wbs.
+ */
+export async function getDesglosePagosWbs(wbsId) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_desglose_pagos_wbs", { p_wbs_id: wbsId });
+
+  if (error) {
+    console.error("Error al consultar el desglose de pagos WBS:", error.message);
     return [];
   }
 

@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Pencil, Upload } from "lucide-react";
 import { getWbsPresupuesto, actualizarPresupuestoWbs, renombrarPartidaWbs } from "@/app/actions/wbs";
 import ModalImportarWbs from "@/components/ModalImportarWbs";
+import ModalDesglosePagosWbs from "@/components/ModalDesglosePagosWbs";
 
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -82,6 +83,7 @@ function NodoWbs({
   onGuardarPresupuesto,
   onGuardarRenombre,
   modoEdicion,
+  onVerDesglose,
 }) {
   const esHoja = nodo.hijos.length === 0;
   const expandido = expandidos.has(nodo.id);
@@ -176,7 +178,13 @@ function NodoWbs({
           )}
         </td>
         <td className="px-4 py-2 text-right">
-          {formatoMXN(esHoja ? nodo.ejercido : nodo.ejercidoAgg)}
+          <button
+            type="button"
+            onClick={() => onVerDesglose(nodo)}
+            className="hover:underline"
+          >
+            {formatoMXN(esHoja ? nodo.ejercido : nodo.ejercidoAgg)}
+          </button>
         </td>
         <td className="px-4 py-2 text-right font-medium">
           {formatoMXN(esHoja ? nodo.disponible : nodo.disponibleAgg)}
@@ -211,6 +219,7 @@ function NodoWbs({
             onGuardarPresupuesto={onGuardarPresupuesto}
             onGuardarRenombre={onGuardarRenombre}
             modoEdicion={modoEdicion}
+            onVerDesglose={onVerDesglose}
           />
         ))}
     </>
@@ -302,6 +311,7 @@ export default function PanelPresupuestoWbs({ proyectos }) {
   const [vista, setVista] = useState("arbol");
   const [expandidos, setExpandidos] = useState(new Set());
   const [modoEdicion, setModoEdicion] = useState(false);
+  const [desgloseNodo, setDesgloseNodo] = useState(null);
 
   useEffect(() => {
     if (!proyectoId) {
@@ -512,6 +522,7 @@ export default function PanelPresupuestoWbs({ proyectos }) {
                           onGuardarPresupuesto={guardarPresupuesto}
                           onGuardarRenombre={guardarRenombre}
                           modoEdicion={modoEdicion}
+                          onVerDesglose={setDesgloseNodo}
                         />
                       ))}
                   </Fragment>
@@ -529,6 +540,13 @@ export default function PanelPresupuestoWbs({ proyectos }) {
           onCerrar={() => setModalAbierto(false)}
         />
       )}
+
+      <ModalDesglosePagosWbs
+        wbsId={desgloseNodo?.id ?? null}
+        titulo={desgloseNodo ? `${desgloseNodo.codigo ? desgloseNodo.codigo + " · " : ""}${desgloseNodo.partida}` : ""}
+        open={desgloseNodo !== null}
+        onClose={() => setDesgloseNodo(null)}
+      />
     </div>
   );
 }

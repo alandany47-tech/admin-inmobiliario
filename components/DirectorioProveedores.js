@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Landmark, Mail, Pencil, Phone, Power, Search, Trash2, X } from "lucide-react";
+import { Landmark, Mail, Pencil, Phone, Power, Search, Trash2, Upload, X } from "lucide-react";
 import {
   actualizarProveedor,
   cambiarEstatusProveedor,
   eliminarProveedor,
+  getProveedores,
 } from "@/app/actions/proveedores";
+import ModalImportarProveedores from "@/components/ModalImportarProveedores";
 
 const ESTILO_ESTATUS = {
   Activo: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400",
@@ -45,6 +47,12 @@ export default function DirectorioProveedores({ proveedores: proveedoresIniciale
   const [guardando, setGuardando] = useState(false);
   const [procesandoId, setProcesandoId] = useState(null);
   const [error, setError] = useState("");
+  const [modalImportAbierto, setModalImportAbierto] = useState(false);
+
+  function importado() {
+    setModalImportAbierto(false);
+    getProveedores().then(setProveedores);
+  }
 
   const proveedoresFiltrados = useMemo(() => {
     const termino = busqueda.trim().toLowerCase();
@@ -142,18 +150,28 @@ export default function DirectorioProveedores({ proveedores: proveedoresIniciale
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="relative sm:max-w-sm">
-        <Search
-          size={16}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
-        />
-        <input
-          type="text"
-          placeholder="Buscar por razón social o RFC…"
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          className="w-full rounded border border-black/[.08] bg-transparent py-2 pl-9 pr-3 text-sm dark:border-white/[.145]"
-        />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="relative sm:max-w-sm sm:flex-1">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
+          />
+          <input
+            type="text"
+            placeholder="Buscar por razón social o RFC…"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            className="w-full rounded border border-black/[.08] bg-transparent py-2 pl-9 pr-3 text-sm dark:border-white/[.145]"
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setModalImportAbierto(true)}
+          className="flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
+        >
+          <Upload size={15} /> Importar Proveedores desde Excel
+        </button>
       </div>
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
@@ -337,6 +355,10 @@ export default function DirectorioProveedores({ proveedores: proveedoresIniciale
             </div>
           </form>
         </div>
+      )}
+
+      {modalImportAbierto && (
+        <ModalImportarProveedores onImportado={importado} onCerrar={() => setModalImportAbierto(false)} />
       )}
     </div>
   );

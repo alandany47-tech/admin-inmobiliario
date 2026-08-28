@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, CheckCircle2, Plus, Search, Trash2, Users, X } from "lucide-react";
 import { crearSolicitudPago, getFolioPreview } from "@/app/actions/solicitudes";
+import { construirRutaWbs } from "@/lib/wbs";
 
 const TASA_IVA = 0.16;
 const METODOS_PAGO = ["Transferencia bancaria", "Efectivo"];
@@ -99,12 +100,19 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
   );
   const total = useMemo(() => Math.round((subtotal + iva) * 100) / 100, [subtotal, iva]);
 
-  const wbsDisponible = useMemo(
+  const wbsPorId = useMemo(() => new Map(wbsCatalog.map((w) => [w.id, w])), [wbsCatalog]);
+  const wbsConHijos = useMemo(
+    () => new Set(wbsCatalog.filter((w) => w.parent_id).map((w) => w.parent_id)),
+    [wbsCatalog]
+  );
+
+  const wbsHojas = useMemo(
     () =>
-      wbsCatalog.filter(
-        (w) => w.proyecto_id === null || String(w.proyecto_id) === form.proyectoId
-      ),
-    [wbsCatalog, form.proyectoId]
+      wbsCatalog
+        .filter((w) => !wbsConHijos.has(w.id))
+        .filter((w) => w.proyecto_id === null || String(w.proyecto_id) === form.proyectoId)
+        .map((w) => ({ ...w, ruta: construirRutaWbs(w, wbsPorId) })),
+    [wbsCatalog, wbsConHijos, wbsPorId, form.proyectoId]
   );
 
   const [wbsBusqueda, setWbsBusqueda] = useState("");
@@ -113,11 +121,9 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
 
   const wbsFiltrado = useMemo(() => {
     const termino = wbsBusqueda.trim().toLowerCase();
-    if (!termino) return wbsDisponible;
-    return wbsDisponible.filter((w) =>
-      `${w.codigo ?? ""} ${w.categoria} ${w.partida}`.toLowerCase().includes(termino)
-    );
-  }, [wbsDisponible, wbsBusqueda]);
+    if (!termino) return wbsHojas;
+    return wbsHojas.filter((w) => `${w.codigo ?? ""} ${w.ruta}`.toLowerCase().includes(termino));
+  }, [wbsHojas, wbsBusqueda]);
 
   useEffect(() => {
     function alClickFuera(e) {
@@ -135,7 +141,7 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
 
   function seleccionarWbs(entrada) {
     setForm((f) => ({ ...f, wbsCategoria: entrada.categoria, wbsPartida: entrada.partida, wbsCatalogId: entrada.id }));
-    setWbsBusqueda(`${entrada.codigo ? entrada.codigo + " · " : ""}${entrada.categoria} — ${entrada.partida}`);
+    setWbsBusqueda(`${entrada.codigo ? "[" + entrada.codigo + "] " : ""}${entrada.ruta}`);
     setWbsAbierto(false);
   }
 
@@ -501,13 +507,14 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
                       key={w.id}
                       type="button"
                       onClick={() => seleccionarWbs(w)}
-                      className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+                      className="flex w-full items-start gap-1.5 px-3 py-2 text-left text-sm hover:bg-black/[.04] dark:hover:bg-white/[.06]"
                     >
-                      <span className="font-medium text-black dark:text-zinc-50">
-                        {w.codigo ? `${w.codigo} · ` : ""}
-                        {w.categoria}
-                      </span>
-                      <span className="text-xs text-zinc-500 dark:text-zinc-400">{w.partida}</span>
+                      {w.codigo && (
+                        <span className="shrink-0 font-mono text-xs text-zinc-500 dark:text-zinc-400">
+                          [{w.codigo}]
+                        </span>
+                      )}
+                      <span className="text-black dark:text-zinc-50">{w.ruta}</span>
                     </button>
                   ))
                 )}
