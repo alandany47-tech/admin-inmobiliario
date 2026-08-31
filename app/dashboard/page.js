@@ -1,5 +1,6 @@
 import { ArrowRightLeft, CalendarDays, Clock, Wallet } from "lucide-react";
 import { getSolicitudesDashboard } from "@/app/actions/dashboard";
+import DesgloseCategoriasWbs from "@/components/DesgloseCategoriasWbs";
 
 function formatoMXN(valor) {
   return Number(valor).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -78,11 +79,24 @@ export default async function DashboardPage() {
   const porCategoria = Object.values(
     solicitudesPagadas.reduce((acc, s) => {
       const clave = s.wbs_categoria || "Sin clasificar";
-      if (!acc[clave]) acc[clave] = { etiqueta: clave, total: 0 };
+      if (!acc[clave]) acc[clave] = { etiqueta: clave, total: 0, subpartidas: {} };
       acc[clave].total += Number(s.total);
+      const claveSub = s.wbs_partida || "Sin subpartida";
+      acc[clave].subpartidas[claveSub] = (acc[clave].subpartidas[claveSub] ?? 0) + Number(s.total);
       return acc;
     }, {})
-  ).sort((a, b) => b.total - a.total);
+  )
+    .map((cat) => ({
+      ...cat,
+      subpartidas: Object.entries(cat.subpartidas)
+        .map(([etiqueta, total]) => ({
+          etiqueta,
+          total,
+          porcentaje: cat.total > 0 ? (total / cat.total) * 100 : 0,
+        }))
+        .sort((a, b) => b.total - a.total),
+    }))
+    .sort((a, b) => b.total - a.total);
 
   return (
     <div className="flex flex-col flex-1 items-center bg-zinc-50 font-sans dark:bg-black">
@@ -147,20 +161,7 @@ export default async function DashboardPage() {
           <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
             Resumen de Gastos por Categoría WBS
           </h2>
-          {porCategoria.length === 0 ? (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">Sin pagos registrados.</p>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {porCategoria.map((item) => (
-                <BarraProgreso
-                  key={item.etiqueta}
-                  etiqueta={item.etiqueta}
-                  monto={item.total}
-                  porcentaje={totalPagadoGeneral > 0 ? (item.total / totalPagadoGeneral) * 100 : 0}
-                />
-              ))}
-            </div>
-          )}
+          <DesgloseCategoriasWbs categorias={porCategoria} totalGeneral={totalPagadoGeneral} />
         </section>
       </main>
     </div>

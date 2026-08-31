@@ -130,17 +130,29 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
 
   const wbsHojas = useMemo(
     () =>
-      wbsCatalog
-        .filter((w) => !wbsConHijos.has(w.id))
-        .filter((w) => w.proyecto_id === null || String(w.proyecto_id) === form.proyectoId)
-        .map((w) => ({ ...w, ruta: construirRutaWbs(w, wbsPorId) }))
-        .sort((a, b) => compararCodigoWbsNatural(a.codigo, b.codigo)),
+      form.proyectoId
+        ? wbsCatalog
+            .filter((w) => !wbsConHijos.has(w.id))
+            .filter((w) => String(w.proyecto_id) === form.proyectoId)
+            .map((w) => ({ ...w, ruta: construirRutaWbs(w, wbsPorId) }))
+            .sort((a, b) => compararCodigoWbsNatural(a.codigo, b.codigo))
+        : [],
     [wbsCatalog, wbsConHijos, wbsPorId, form.proyectoId]
   );
 
   const [wbsBusqueda, setWbsBusqueda] = useState("");
   const [wbsAbierto, setWbsAbierto] = useState(false);
   const wbsBoxRef = useRef(null);
+
+  // Al cambiar (o limpiar) el proyecto, la partida WBS ya seleccionada deja
+  // de ser válida (pertenece al catálogo de otro proyecto o no hay proyecto
+  // aún): se resetea para forzar una nueva selección contra el catálogo
+  // correcto.
+  useEffect(() => {
+    setForm((f) => ({ ...f, wbsCategoria: "", wbsPartida: "", wbsCatalogId: null }));
+    setWbsBusqueda("");
+    setWbsAbierto(false);
+  }, [form.proyectoId]);
 
   const wbsFiltrado = useMemo(() => {
     const termino = wbsBusqueda.trim().toLowerCase();
@@ -545,53 +557,61 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
           </h2>
           <div className="relative flex flex-col gap-1.5 sm:max-w-md" ref={wbsBoxRef}>
             <label className={labelClase}>Partida WBS</label>
-            <div className="relative">
-              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-              <input
-                type="text"
-                placeholder="Busca por código, categoría o partida…"
-                className={`${inputClase} w-full pl-8`}
-                value={wbsBusqueda}
-                onFocus={() => setWbsAbierto(true)}
-                onChange={(e) => {
-                  setWbsBusqueda(e.target.value);
-                  setWbsAbierto(true);
-                  if (form.wbsCatalogId) {
-                    setForm((f) => ({ ...f, wbsCategoria: "", wbsPartida: "", wbsCatalogId: null }));
-                  }
-                }}
-              />
-            </div>
+            {!form.proyectoId ? (
+              <p className="rounded border border-dashed border-black/[.08] px-3 py-2.5 text-sm text-zinc-500 dark:border-white/[.145] dark:text-zinc-400">
+                Selecciona un proyecto primero para cargar su catálogo WBS
+              </p>
+            ) : (
+              <>
+                <div className="relative">
+                  <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                  <input
+                    type="text"
+                    placeholder="Busca por código, categoría o partida…"
+                    className={`${inputClase} w-full pl-8`}
+                    value={wbsBusqueda}
+                    onFocus={() => setWbsAbierto(true)}
+                    onChange={(e) => {
+                      setWbsBusqueda(e.target.value);
+                      setWbsAbierto(true);
+                      if (form.wbsCatalogId) {
+                        setForm((f) => ({ ...f, wbsCategoria: "", wbsPartida: "", wbsCatalogId: null }));
+                      }
+                    }}
+                  />
+                </div>
 
-            {wbsAbierto && (
-              <div className="absolute top-full z-10 mt-1 max-h-64 w-full overflow-y-auto rounded border border-black/[.08] bg-white shadow-lg dark:border-white/[.145] dark:bg-zinc-900">
-                {wbsFiltrado.length === 0 ? (
-                  <p className="px-3 py-2.5 text-sm text-zinc-500 dark:text-zinc-400">Sin resultados.</p>
-                ) : (
-                  wbsFiltrado.map((w) => (
-                    <button
-                      key={w.id}
-                      type="button"
-                      onClick={() => seleccionarWbs(w)}
-                      className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-black/[.04] dark:hover:bg-white/[.06]"
-                    >
-                      <span className="flex items-start gap-1.5">
-                        {w.codigo && (
-                          <span className="shrink-0 font-mono text-xs text-zinc-500 dark:text-zinc-400">
-                            [{w.codigo}]
+                {wbsAbierto && (
+                  <div className="absolute top-full z-10 mt-1 max-h-64 w-full overflow-y-auto rounded border border-black/[.08] bg-white shadow-lg dark:border-white/[.145] dark:bg-zinc-900">
+                    {wbsFiltrado.length === 0 ? (
+                      <p className="px-3 py-2.5 text-sm text-zinc-500 dark:text-zinc-400">Sin resultados.</p>
+                    ) : (
+                      wbsFiltrado.map((w) => (
+                        <button
+                          key={w.id}
+                          type="button"
+                          onClick={() => seleccionarWbs(w)}
+                          className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+                        >
+                          <span className="flex items-start gap-1.5">
+                            {w.codigo && (
+                              <span className="shrink-0 font-mono text-xs text-zinc-500 dark:text-zinc-400">
+                                [{w.codigo}]
+                              </span>
+                            )}
+                            <span className="text-black dark:text-zinc-50">{w.ruta}</span>
                           </span>
-                        )}
-                        <span className="text-black dark:text-zinc-50">{w.ruta}</span>
-                      </span>
-                      {w.disponible != null && (
-                        <span className="shrink-0 text-xs text-zinc-500 dark:text-zinc-400">
-                          Disp. {formatoMXN(Number(w.disponible))}
-                        </span>
-                      )}
-                    </button>
-                  ))
+                          {w.disponible != null && (
+                            <span className="shrink-0 text-xs text-zinc-500 dark:text-zinc-400">
+                              Disp. {formatoMXN(Number(w.disponible))}
+                            </span>
+                          )}
+                        </button>
+                      ))
+                    )}
+                  </div>
                 )}
-              </div>
+              </>
             )}
           </div>
 

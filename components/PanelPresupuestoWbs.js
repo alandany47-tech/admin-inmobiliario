@@ -1,13 +1,13 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
-  ChevronDown,
-  ChevronRight,
+  ChevronsDown,
+  ChevronsUp,
   FileDown,
   Pencil,
   Save,
@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { getWbsPresupuesto, actualizarPresupuestoWbs, renombrarPartidaWbs } from "@/app/actions/wbs";
-import { compararCodigoWbsNatural } from "@/lib/wbs";
+import { construirArbol } from "@/lib/wbs";
 import ModalImportarWbs from "@/components/ModalImportarWbs";
 import ModalDesglosePagosWbs from "@/components/ModalDesglosePagosWbs";
 import ModalConfirmarCambiosWbs from "@/components/ModalConfirmarCambiosWbs";
@@ -24,101 +24,15 @@ function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 }
 
-/**
- * Compara dos nodos/grupos agregados según el criterio de orden activo.
- * Para "codigo" usa orden natural (1.2 antes de 1.10) y los códigos ausentes
- * siempre van al final, sin importar la dirección; para presupuesto/ejercido
- * compara los agregados numéricos. `direccion` invierte el resultado salvo en
- * el caso de códigos ausentes (regla ya resuelta por compararCodigoWbsNatural).
- */
-function compararNodos(a, b, criterio, direccion) {
-  if (criterio === "codigo") {
-    const cmp = compararCodigoWbsNatural(a.codigo, b.codigo);
-    if (!a.codigo || !b.codigo) return cmp;
-    return direccion === "desc" ? -cmp : cmp;
-  }
-  const valorA = criterio === "presupuesto" ? a.presupuestoAgg : a.ejercidoAgg;
-  const valorB = criterio === "presupuesto" ? b.presupuestoAgg : b.ejercidoAgg;
-  const cmp = valorA - valorB;
-  return direccion === "desc" ? -cmp : cmp;
+/** Recolecta recursivamente las hojas (nodos sin hijos) bajo un nodo del árbol. */
+function recolectarHojas(nodo) {
+  if (nodo.hijos.length === 0) return [nodo];
+  return nodo.hijos.flatMap(recolectarHojas);
 }
 
-/**
- * Arma el árbol WBS a partir de la lista plana (relación parent_id) y agrupa
- * las raíces por categoría. Cada nodo recibe hijos[] y los totales agregados
- * (presupuestoAgg/ejercidoAgg/disponibleAgg) calculados en el cliente: en un
- * nodo hoja son sus propios valores, en un nodo con hijos son la suma de los
- * agregados de sus hijos. `orden` ({criterio, direccion}) determina el orden
- * jerárquico natural aplicado a hijos, partidas dentro de cada categoría y
- * categorías entre sí.
- */
-function construirArbol(filas, orden) {
-  const porId = new Map(filas.map((f) => [f.id, { ...f, hijos: [] }]));
-  const raices = [];
-
-  porId.forEach((nodo) => {
-    if (nodo.parent_id && porId.has(nodo.parent_id)) {
-      porId.get(nodo.parent_id).hijos.push(nodo);
-    } else {
-      raices.push(nodo);
-    }
-  });
-
-  function agregar(nodo) {
-    if (nodo.hijos.length === 0) {
-      nodo.presupuestoAgg = Number(nodo.presupuesto);
-      nodo.ejercidoAgg = Number(nodo.ejercido);
-      nodo.disponibleAgg = Number(nodo.disponible);
-      return;
-    }
-    let presupuestoAgg = 0;
-    let ejercidoAgg = 0;
-    let disponibleAgg = 0;
-    nodo.hijos.forEach((hijo) => {
-      agregar(hijo);
-      presupuestoAgg += hijo.presupuestoAgg;
-      ejercidoAgg += hijo.ejercidoAgg;
-      disponibleAgg += hijo.disponibleAgg;
-    });
-    nodo.presupuestoAgg = presupuestoAgg;
-    nodo.ejercidoAgg = ejercidoAgg;
-    nodo.disponibleAgg = disponibleAgg;
-  }
-  raices.forEach(agregar);
-
-  function ordenarHijos(nodo) {
-    nodo.hijos.forEach(ordenarHijos);
-    nodo.hijos.sort((a, b) => compararNodos(a, b, orden.criterio, orden.direccion));
-  }
-  raices.forEach(ordenarHijos);
-
-  const grupos = new Map();
-  raices.forEach((nodo) => {
-    const categoria = nodo.categoria || "Sin categoría";
-    if (!grupos.has(categoria)) grupos.set(categoria, []);
-    grupos.get(categoria).push(nodo);
-  });
-
-  const hojas = [...porId.values()].filter((nodo) => nodo.hijos.length === 0);
-
-  const arbol = [...grupos.entries()].map(([categoria, nodos]) => {
-    nodos.sort((a, b) => compararNodos(a, b, orden.criterio, orden.direccion));
-    return {
-      categoria,
-      nodos,
-      presupuestoAgg: nodos.reduce((s, n) => s + n.presupuestoAgg, 0),
-      ejercidoAgg: nodos.reduce((s, n) => s + n.ejercidoAgg, 0),
-      disponibleAgg: nodos.reduce((s, n) => s + n.disponibleAgg, 0),
-    };
-  });
-
-  arbol.sort((g1, g2) =>
-    orden.criterio === "codigo"
-      ? compararNodos(g1.nodos[0] ?? {}, g2.nodos[0] ?? {}, orden.criterio, orden.direccion)
-      : compararNodos(g1, g2, orden.criterio, orden.direccion)
-  );
-
-  return { arbol, hojas };
+/** Recolecta recursivamente los ids de todos los nodos con hijos (expandibles) del árbol. */
+function idsExpandibles(nodos) {
+  return nodos.flatMap((n) => (n.hijos.length > 0 ? [n.id, ...idsExpandibles(n.hijos)] : []));
 }
 
 function NodoWbs({
@@ -150,21 +64,17 @@ function NodoWbs({
 
   return (
     <>
-      <tr className="border-b border-black/[.08] last:border-b-0 dark:border-white/[.145]">
+      <tr
+        onClick={!esHoja ? () => onAlternarExpandido(nodo.id) : undefined}
+        className={`border-b border-black/[.08] last:border-b-0 dark:border-white/[.145] ${
+          nivel === 0 ? "bg-black/[.02] dark:bg-white/[.03]" : ""
+        } ${!esHoja ? "cursor-pointer hover:bg-black/[.04] dark:hover:bg-white/[.06]" : ""}`}
+      >
         <td className="py-2 pr-4 pl-4 font-mono text-xs text-zinc-500 dark:text-zinc-400">
-          {nodo.codigo || "—"}
+          {nodo.codigoJerarquico}
         </td>
         <td className="py-2 pr-4" style={{ paddingLeft: `${nivel * 1.25}rem` }}>
           <div className="flex items-center gap-1.5">
-            {!esHoja && (
-              <button
-                type="button"
-                onClick={() => onAlternarExpandido(nodo.id)}
-                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
-              >
-                {expandido ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              </button>
-            )}
             {renombrando ? (
               <input
                 className={inputTextoClase}
@@ -228,13 +138,20 @@ function NodoWbs({
           )}
         </td>
         <td className="px-4 py-2 text-right">
-          <button
-            type="button"
-            onClick={() => onVerDesglose(nodo)}
-            className="hover:underline"
-          >
-            {formatoMXN(esHoja ? nodo.ejercido : nodo.ejercidoAgg)}
-          </button>
+          {nodo.esVirtual ? (
+            formatoMXN(nodo.ejercidoAgg)
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onVerDesglose(nodo);
+              }}
+              className="hover:underline"
+            >
+              {formatoMXN(esHoja ? nodo.ejercido : nodo.ejercidoAgg)}
+            </button>
+          )}
         </td>
         <td className="px-4 py-2 text-right font-medium">
           {formatoMXN(esHoja ? nodo.disponible : nodo.disponibleAgg)}
@@ -299,8 +216,24 @@ function TarjetaKpi({ titulo, valor, negativo }) {
   );
 }
 
-/** Dashboard visual del proyecto: KPIs globales y barras de avance por categoría. */
+/**
+ * Dashboard visual del proyecto: KPIs globales y desglose de avance por
+ * partida raíz (Nivel 1). Cada partida es un acordeón: al desplegarla
+ * muestra la lista de subpartidas hoja de donde se resta el dinero, con su
+ * pagado y el porcentaje de su propio presupuesto ya ejercido.
+ */
 function DashboardWbs({ arbol, presupuestoTotal, ejercidoTotal, disponibleTotal, avancePct }) {
+  const [expandidos, setExpandidos] = useState(new Set());
+
+  function alternar(id) {
+    setExpandidos((prev) => {
+      const siguiente = new Set(prev);
+      if (siguiente.has(id)) siguiente.delete(id);
+      else siguiente.add(id);
+      return siguiente;
+    });
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -316,7 +249,7 @@ function DashboardWbs({ arbol, presupuestoTotal, ejercidoTotal, disponibleTotal,
 
       <div className="flex flex-col gap-3">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          Avance por Categoría
+          Avance por Partida (Nivel 1)
         </h2>
         {arbol.length === 0 ? (
           <p className="rounded-lg border border-dashed border-black/[.08] p-8 text-center text-sm text-zinc-500 dark:border-white/[.145] dark:text-zinc-400">
@@ -327,24 +260,65 @@ function DashboardWbs({ arbol, presupuestoTotal, ejercidoTotal, disponibleTotal,
             {arbol.map((grupo) => {
               const pct = grupo.presupuestoAgg > 0 ? (grupo.ejercidoAgg / grupo.presupuestoAgg) * 100 : 0;
               const color = pct > 100 ? "bg-red-500" : pct >= 80 ? "bg-amber-500" : "bg-green-500";
+              const expandido = expandidos.has(grupo.id);
+              const hojas = recolectarHojas(grupo);
               return (
                 <div
-                  key={grupo.categoria}
+                  key={grupo.id}
                   className="flex flex-col gap-1.5 rounded-lg border border-black/[.08] p-4 dark:border-white/[.145]"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                    <span className="font-medium text-black dark:text-zinc-50">{grupo.categoria}</span>
-                    <span className="text-zinc-500 dark:text-zinc-400">
-                      {formatoMXN(grupo.ejercidoAgg)} / {formatoMXN(grupo.presupuestoAgg)} ({pct.toFixed(0)}
-                      %)
-                    </span>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-black/[.06] dark:bg-white/[.08]">
-                    <div
-                      className={`h-full ${color}`}
-                      style={{ width: `${Math.min(pct, 100)}%` }}
-                    />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => alternar(grupo.id)}
+                    className="flex flex-col gap-1.5 text-left"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <span className="font-medium text-black dark:text-zinc-50">
+                        {grupo.codigoJerarquico}. {grupo.categoria}
+                      </span>
+                      <span className="text-zinc-500 dark:text-zinc-400">
+                        {formatoMXN(grupo.ejercidoAgg)} / {formatoMXN(grupo.presupuestoAgg)} ({pct.toFixed(0)}
+                        %)
+                      </span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-black/[.06] dark:bg-white/[.08]">
+                      <div className={`h-full ${color}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                    </div>
+                  </button>
+
+                  {expandido && (
+                    <div className="mt-2 flex flex-col divide-y divide-black/[.06] border-t border-black/[.06] pt-2 dark:divide-white/[.08] dark:border-white/[.08]">
+                      {hojas.length === 0 ? (
+                        <p className="py-2 text-xs text-zinc-500 dark:text-zinc-400">
+                          Sin subpartidas hoja.
+                        </p>
+                      ) : (
+                        hojas.map((hoja) => {
+                          const pctHoja =
+                            Number(hoja.presupuesto) > 0
+                              ? (Number(hoja.ejercido) / Number(hoja.presupuesto)) * 100
+                              : 0;
+                          return (
+                            <div
+                              key={hoja.id}
+                              className="flex items-center justify-between gap-3 py-2 text-xs"
+                            >
+                              <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-400">
+                                <span className="font-mono text-zinc-400 dark:text-zinc-500">
+                                  {hoja.codigoJerarquico}
+                                </span>
+                                {hoja.partida}
+                              </span>
+                              <span className="shrink-0 text-zinc-700 dark:text-zinc-300">
+                                {formatoMXN(hoja.ejercido)} / {formatoMXN(hoja.presupuesto)} (
+                                {pctHoja.toFixed(0)}%)
+                              </span>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -439,16 +413,6 @@ export default function PanelPresupuestoWbs({ proyectos }) {
   const disponibleTotal = presupuestoTotal - ejercidoTotal;
   const avancePct = presupuestoTotal > 0 ? (ejercidoTotal / presupuestoTotal) * 100 : 0;
 
-  function alternarExpandidoCategoria(categoria) {
-    const clave = `cat:${categoria}`;
-    setExpandidos((prev) => {
-      const siguiente = new Set(prev);
-      if (siguiente.has(clave)) siguiente.delete(clave);
-      else siguiente.add(clave);
-      return siguiente;
-    });
-  }
-
   function alternarExpandidoNodo(id) {
     setExpandidos((prev) => {
       const siguiente = new Set(prev);
@@ -456,6 +420,14 @@ export default function PanelPresupuestoWbs({ proyectos }) {
       else siguiente.add(id);
       return siguiente;
     });
+  }
+
+  function expandirTodo() {
+    setExpandidos(new Set(idsExpandibles(arbol)));
+  }
+
+  function contraerTodo() {
+    setExpandidos(new Set());
   }
 
   /**
@@ -679,94 +651,82 @@ export default function PanelPresupuestoWbs({ proyectos }) {
           avancePct={avancePct}
         />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-black/[.08] dark:border-white/[.145]">
-          <table className="w-full min-w-[1000px] text-sm">
-            <thead>
-              <tr className="border-b border-black/[.08] bg-black/[.03] text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:border-white/[.145] dark:bg-white/[.04] dark:text-zinc-400">
-                <th className="py-3 pr-4 pl-4">
-                  <button
-                    type="button"
-                    onClick={() => cambiarOrden("codigo")}
-                    className="flex items-center gap-1 uppercase tracking-wide hover:text-zinc-800 dark:hover:text-zinc-200"
-                  >
-                    Índice / Código <IconoOrden activo={orden.criterio === "codigo"} direccion={orden.direccion} />
-                  </button>
-                </th>
-                <th className="px-4 py-3">Categoría</th>
-                <th className="px-4 py-3">Partida</th>
-                <th className="px-4 py-3 text-right">
-                  <button
-                    type="button"
-                    onClick={() => cambiarOrden("presupuesto")}
-                    className="ml-auto flex items-center gap-1 uppercase tracking-wide hover:text-zinc-800 dark:hover:text-zinc-200"
-                  >
-                    Presupuesto <IconoOrden activo={orden.criterio === "presupuesto"} direccion={orden.direccion} />
-                  </button>
-                </th>
-                <th className="px-4 py-3 text-right">
-                  <button
-                    type="button"
-                    onClick={() => cambiarOrden("ejercido")}
-                    className="ml-auto flex items-center gap-1 uppercase tracking-wide hover:text-zinc-800 dark:hover:text-zinc-200"
-                  >
-                    Ejercido <IconoOrden activo={orden.criterio === "ejercido"} direccion={orden.direccion} />
-                  </button>
-                </th>
-                <th className="px-4 py-3 text-right">Disponible</th>
-                <th className="px-4 py-3">Activo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {arbol.map((grupo) => {
-                const claveGrupo = `cat:${grupo.categoria}`;
-                const expandidoGrupo = expandidos.has(claveGrupo);
-                return (
-                  <Fragment key={claveGrupo}>
-                    <tr className="border-b border-black/[.08] bg-black/[.02] dark:border-white/[.145] dark:bg-white/[.03]">
-                      <td className="px-4 py-2.5" />
-                      <td colSpan={2} className="px-4 py-2.5">
-                        <button
-                          type="button"
-                          onClick={() => alternarExpandidoCategoria(grupo.categoria)}
-                          className="flex items-center gap-1.5 font-medium text-black dark:text-zinc-50"
-                        >
-                          {expandidoGrupo ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                          {grupo.categoria}
-                        </button>
-                      </td>
-                      <td className="px-4 py-2.5 text-right font-medium">
-                        {formatoMXN(grupo.presupuestoAgg)}
-                      </td>
-                      <td className="px-4 py-2.5 text-right">{formatoMXN(grupo.ejercidoAgg)}</td>
-                      <td className="px-4 py-2.5 text-right font-medium">
-                        {formatoMXN(grupo.disponibleAgg)}
-                      </td>
-                      <td className="px-4 py-2.5" />
-                    </tr>
-                    {expandidoGrupo &&
-                      grupo.nodos.map((nodo) => (
-                        <NodoWbs
-                          key={`${nodo.id}-v${versionCambios}`}
-                          nodo={nodo}
-                          nivel={1}
-                          expandidos={expandidos}
-                          onAlternarExpandido={alternarExpandidoNodo}
-                          bloqueado={guardandoLote}
-                          versionCambios={versionCambios}
-                          renombrandoId={renombrando}
-                          onIniciarRenombre={setRenombrando}
-                          onCancelarRenombre={() => setRenombrando(null)}
-                          onGuardarPresupuesto={marcarPresupuestoPendiente}
-                          onGuardarRenombre={marcarRenombrePendiente}
-                          modoEdicion={modoEdicion}
-                          onVerDesglose={setDesgloseNodo}
-                        />
-                      ))}
-                  </Fragment>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={expandirTodo}
+              className="flex items-center gap-1.5 rounded-full border border-black/[.08] px-3 py-1 text-xs font-medium text-zinc-600 hover:bg-black/[.04] dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+            >
+              <ChevronsDown size={13} /> Expandir Todo
+            </button>
+            <button
+              type="button"
+              onClick={contraerTodo}
+              className="flex items-center gap-1.5 rounded-full border border-black/[.08] px-3 py-1 text-xs font-medium text-zinc-600 hover:bg-black/[.04] dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+            >
+              <ChevronsUp size={13} /> Contraer Todo
+            </button>
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-black/[.08] dark:border-white/[.145]">
+            <table className="w-full min-w-[1000px] text-sm">
+              <thead>
+                <tr className="border-b border-black/[.08] bg-black/[.03] text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:border-white/[.145] dark:bg-white/[.04] dark:text-zinc-400">
+                  <th className="py-3 pr-4 pl-4">
+                    <button
+                      type="button"
+                      onClick={() => cambiarOrden("codigo")}
+                      className="flex items-center gap-1 uppercase tracking-wide hover:text-zinc-800 dark:hover:text-zinc-200"
+                    >
+                      Índice / Código <IconoOrden activo={orden.criterio === "codigo"} direccion={orden.direccion} />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3">Categoría</th>
+                  <th className="px-4 py-3">Partida</th>
+                  <th className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => cambiarOrden("presupuesto")}
+                      className="ml-auto flex items-center gap-1 uppercase tracking-wide hover:text-zinc-800 dark:hover:text-zinc-200"
+                    >
+                      Presupuesto <IconoOrden activo={orden.criterio === "presupuesto"} direccion={orden.direccion} />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => cambiarOrden("ejercido")}
+                      className="ml-auto flex items-center gap-1 uppercase tracking-wide hover:text-zinc-800 dark:hover:text-zinc-200"
+                    >
+                      Ejercido <IconoOrden activo={orden.criterio === "ejercido"} direccion={orden.direccion} />
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 text-right">Disponible</th>
+                  <th className="px-4 py-3">Activo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {arbol.map((raiz) => (
+                  <NodoWbs
+                    key={`${raiz.id}-v${versionCambios}`}
+                    nodo={raiz}
+                    nivel={0}
+                    expandidos={expandidos}
+                    onAlternarExpandido={alternarExpandidoNodo}
+                    bloqueado={guardandoLote}
+                    versionCambios={versionCambios}
+                    renombrandoId={renombrando}
+                    onIniciarRenombre={setRenombrando}
+                    onCancelarRenombre={() => setRenombrando(null)}
+                    onGuardarPresupuesto={marcarPresupuestoPendiente}
+                    onGuardarRenombre={marcarRenombrePendiente}
+                    modoEdicion={modoEdicion}
+                    onVerDesglose={setDesgloseNodo}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
