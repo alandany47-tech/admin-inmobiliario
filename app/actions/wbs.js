@@ -64,18 +64,48 @@ export async function getDesglosePagosWbs(wbsId) {
   return data;
 }
 
-/** Actualiza el techo de presupuesto de una partida. No mueve dinero: no requiere función atómica. */
-export async function actualizarPresupuestoWbs(id, nuevoPresupuesto) {
+/**
+ * Actualiza el techo de presupuesto de una partida. No mueve dinero: no
+ * requiere función atómica. Exige `comentario` (comentario libre / número de
+ * Orden de Cambio) y deja una fila en `wbs_historial_cambios` con el monto
+ * anterior y el nuevo.
+ */
+export async function actualizarPresupuestoWbs(id, nuevoPresupuesto, comentario) {
   const monto = Number(nuevoPresupuesto);
   if (!Number.isFinite(monto) || monto < 0) {
     return { error: "Captura un presupuesto válido." };
   }
+  if (!comentario?.trim()) {
+    return { error: "Captura un comentario u Orden de Cambio (OC) para el historial." };
+  }
 
   const supabase = await createClient();
+
+  const { data: actual, error: errorActual } = await supabase
+    .from("wbs_catalog")
+    .select("presupuesto")
+    .eq("id", id)
+    .single();
+
+  if (errorActual) {
+    return { error: `No se pudo leer el presupuesto actual: ${errorActual.message}` };
+  }
+
   const { error } = await supabase.from("wbs_catalog").update({ presupuesto: monto }).eq("id", id);
 
   if (error) {
     return { error: `No se pudo actualizar el presupuesto: ${error.message}` };
+  }
+
+  const { error: errorHistorial } = await supabase.from("wbs_historial_cambios").insert({
+    wbs_catalog_id: id,
+    presupuesto_anterior: actual.presupuesto,
+    presupuesto_nuevo: monto,
+    comentario: comentario.trim(),
+  });
+
+  if (errorHistorial) {
+    return { error: `Presupuesto actualizado, pero no se pudo registrar el historial: ${errorHistorial.message}` };
   }
 
   revalidatePath("/wbs");

@@ -8,6 +8,8 @@ import { useTheme } from "next-themes";
 import {
   Building2,
   FileText,
+  HandCoins,
+  Home,
   Landmark,
   LayoutDashboard,
   Moon,
@@ -16,15 +18,19 @@ import {
   Table,
   TrendingUp,
   Users,
+  Users2,
   Wallet,
 } from "lucide-react";
 
 const ENLACES = [
   { href: "/dashboard", label: "Dashboard", icon: TrendingUp },
   { href: "/proyectos", label: "Proyectos", icon: Building2 },
+  { href: "/unidades", label: "Unidades", icon: Home },
   { href: "/solicitud", label: "Solicitudes", icon: FileText },
   { href: "/autorizaciones", label: "Autorizaciones", icon: ShieldCheck },
   { href: "/tesoreria", label: "Tesorería", icon: Landmark },
+  { href: "/cobranza/clientes", label: "Cartera de Clientes", icon: Users2 },
+  { href: "/cobranza/pagos", label: "Captura de Pagos", icon: HandCoins },
   { href: "/proveedores", label: "Proveedores", icon: Users },
   { href: "/control-maestro", label: "Control Maestro", icon: LayoutDashboard },
   { href: "/wbs", label: "Presupuesto WBS", icon: Wallet },

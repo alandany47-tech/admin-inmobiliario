@@ -494,13 +494,13 @@ export default function PanelPresupuestoWbs({ proyectos }) {
   }
 
   /** Aplica en lote los cambios confirmados en el modal: Server Actions secuenciales + refresco de filas y de la ruta. */
-  async function confirmarCambiosPendientes() {
+  async function confirmarCambiosPendientes(comentario) {
     setGuardandoLote(true);
     setErrorLote("");
 
     for (const cambio of Object.values(cambiosPendientes)) {
       if (cambio.presupuesto !== undefined) {
-        const resultado = await actualizarPresupuestoWbs(cambio.id, cambio.presupuesto);
+        const resultado = await actualizarPresupuestoWbs(cambio.id, cambio.presupuesto, comentario);
         if (resultado.error) {
           setErrorLote(resultado.error);
           setGuardandoLote(false);

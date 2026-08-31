@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CheckCircle2, Clock, FileText, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, Download, FileText, XCircle } from "lucide-react";
 import { cambiarEstadoSolicitud } from "@/app/actions/autorizaciones";
 import ModalVisorPDF from "@/components/ModalVisorPDF";
+import { generarPdfResumenAutorizaciones } from "@/components/PdfResumenAutorizaciones";
 
 function formatoMXN(valor) {
   return Number(valor).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -19,7 +20,14 @@ export default function TablaAutorizaciones({ solicitudes: solicitudesIniciales 
   const [enProceso, setEnProceso] = useState(null);
   const [error, setError] = useState("");
   const [pdfSolicitudId, setPdfSolicitudId] = useState(null);
+  const [generandoResumen, setGenerandoResumen] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  async function descargarResumen() {
+    setGenerandoResumen(true);
+    await generarPdfResumenAutorizaciones(solicitudes);
+    setGenerandoResumen(false);
+  }
 
   function actualizarEstado(id, nuevoEstado) {
     setEnProceso(id);
@@ -45,6 +53,17 @@ export default function TablaAutorizaciones({ solicitudes: solicitudesIniciales 
 
   return (
     <div className="flex flex-col gap-3">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={descargarResumen}
+          disabled={generandoResumen}
+          className="flex items-center gap-1.5 rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+        >
+          <Download size={15} /> {generandoResumen ? "Generando…" : "Descargar Resumen PDF"}
+        </button>
+      </div>
+
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
       <div className="overflow-x-auto rounded-lg border border-black/[.08] dark:border-white/[.145]">

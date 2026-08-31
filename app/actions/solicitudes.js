@@ -93,6 +93,20 @@ export async function crearSolicitudPago(payload) {
     return { error: "Selecciona o registra un proveedor." };
   }
 
+  if (wbsCatalogId) {
+    const { data: wbsResumen } = await supabase
+      .from("wbs_presupuesto_resumen")
+      .select("disponible, partida, codigo")
+      .eq("id", wbsCatalogId)
+      .single();
+
+    if (wbsResumen && total > wbsResumen.disponible) {
+      return {
+        error: `El monto total ($${Number(total).toLocaleString("es-MX")}) excede el disponible presupuestal ($${Number(wbsResumen.disponible).toLocaleString("es-MX")}) para la partida ${wbsResumen.codigo ? wbsResumen.codigo + " " : ""}${wbsResumen.partida}.`,
+      };
+    }
+  }
+
   const { data: solicitud, error: errorSolicitud } = await supabase
     .from("solicitudes_pago")
     .insert({

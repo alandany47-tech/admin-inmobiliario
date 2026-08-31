@@ -3,7 +3,12 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Download, FileText, Paperclip, Plus, Trash2 } from "lucide-react";
-import { cambiarEstadoGeneral, eliminarComprobante, subirComprobante } from "@/app/actions/controlMaestro";
+import {
+  cambiarEstadoGeneral,
+  eliminarComprobante,
+  eliminarSolicitud,
+  subirComprobante,
+} from "@/app/actions/controlMaestro";
 import ModalSolicitudRapida from "@/components/ModalSolicitudRapida";
 import ModalVisorPDF from "@/components/ModalVisorPDF";
 import CeldaTruncada from "@/components/CeldaTruncada";
@@ -52,6 +57,8 @@ export default function PanelControlMaestro({
   const [actualizando, setActualizando] = useState({});
   const [subiendo, setSubiendo] = useState({});
   const [eliminandoComprobanteId, setEliminandoComprobanteId] = useState(null);
+  const [eliminandoId, setEliminandoId] = useState(null);
+  const [seleccionadas, setSeleccionadas] = useState(new Set());
   const [error, setError] = useState("");
   const [exportando, setExportando] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -65,6 +72,59 @@ export default function PanelControlMaestro({
       return true;
     });
   }, [solicitudes, proyectoId, proveedorId, metodoPago, estado]);
+
+  const idsFiltrados = useMemo(() => solicitudesFiltradas.map((s) => s.id), [solicitudesFiltradas]);
+  const todoSeleccionado =
+    idsFiltrados.length > 0 && idsFiltrados.every((id) => seleccionadas.has(id));
+
+  const solicitudesParaExportar = useMemo(() => {
+    if (seleccionadas.size === 0) return solicitudesFiltradas;
+    return solicitudesFiltradas.filter((s) => seleccionadas.has(s.id));
+  }, [solicitudesFiltradas, seleccionadas]);
+
+  function alternarSeleccion(id) {
+    setSeleccionadas((prev) => {
+      const siguiente = new Set(prev);
+      if (siguiente.has(id)) siguiente.delete(id);
+      else siguiente.add(id);
+      return siguiente;
+    });
+  }
+
+  function alternarSeleccionTodo() {
+    setSeleccionadas((prev) => {
+      if (todoSeleccionado) {
+        const siguiente = new Set(prev);
+        idsFiltrados.forEach((id) => siguiente.delete(id));
+        return siguiente;
+      }
+      return new Set([...prev, ...idsFiltrados]);
+    });
+  }
+
+  async function eliminarFila(solicitud) {
+    if (!window.confirm(`¿Eliminar la solicitud ${solicitud.folio}? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    setEliminandoId(solicitud.id);
+    setError("");
+    const resultado = await eliminarSolicitud(solicitud.id);
+    setEliminandoId(null);
+
+    if (resultado.error) {
+      setError(resultado.error);
+      return;
+    }
+
+    setSolicitudes((filas) => filas.filter((f) => f.id !== solicitud.id));
+    setSeleccionadas((prev) => {
+      const siguiente = new Set(prev);
+      siguiente.delete(solicitud.id);
+      return siguiente;
+    });
+    router.refresh();
+  }
 
   function cambiarEstado(id, nuevoEstado) {
     setActualizando((a) => ({ ...a, [id]: true }));
@@ -140,7 +200,7 @@ export default function PanelControlMaestro({
     setExportando(true);
     const XLSX = await import("xlsx");
 
-    const filas = solicitudesFiltradas.map((s) => ({
+    const filas = solicitudesParaExportar.map((s) => ({
       Folio: s.folio,
       Proyecto: `${s.proyectos?.codigo ?? ""} — ${s.proyectos?.nombre ?? ""}`,
       Proveedor: s.proveedores?.razon_social ?? "",
@@ -194,7 +254,7 @@ export default function PanelControlMaestro({
 
     encabezado();
 
-    solicitudesFiltradas.forEach((s) => {
+    solicitudesParaExportar.forEach((s) => {
       if (y > 190) {
         doc.addPage();
         y = 15;
@@ -287,18 +347,18 @@ export default function PanelControlMaestro({
           <button
             type="button"
             onClick={exportarExcel}
-            disabled={exportando || solicitudesFiltradas.length === 0}
+            disabled={exportando || solicitudesParaExportar.length === 0}
             className="flex items-center gap-1.5 rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
           >
-            <Download size={15} /> Excel
+            <Download size={15} /> Excel{seleccionadas.size > 0 ? ` (${seleccionadas.size})` : ""}
           </button>
           <button
             type="button"
             onClick={exportarPDF}
-            disabled={exportando || solicitudesFiltradas.length === 0}
+            disabled={exportando || solicitudesParaExportar.length === 0}
             className="flex items-center gap-1.5 rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
           >
-            <Download size={15} /> PDF
+            <Download size={15} /> PDF{seleccionadas.size > 0 ? ` (${seleccionadas.size})` : ""}
           </button>
         </div>
       </div>
@@ -314,6 +374,14 @@ export default function PanelControlMaestro({
           <table className="w-full min-w-[1200px] text-sm">
             <thead>
               <tr className="border-b border-black/[.08] bg-black/[.03] text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:border-white/[.145] dark:bg-white/[.04] dark:text-zinc-400">
+                <th className="px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={todoSeleccionado}
+                    onChange={alternarSeleccionTodo}
+                    className="size-3.5"
+                  />
+                </th>
                 <th className="px-4 py-3">Folio</th>
                 <th className="px-4 py-3">Fecha</th>
                 <th className="px-4 py-3">Proyecto</th>
@@ -333,6 +401,14 @@ export default function PanelControlMaestro({
                     key={s.id}
                     className="border-b border-black/[.08] last:border-b-0 dark:border-white/[.145]"
                   >
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={seleccionadas.has(s.id)}
+                        onChange={() => alternarSeleccion(s.id)}
+                        className="size-3.5"
+                      />
+                    </td>
                     <td className="px-4 py-3 font-mono">{s.folio}</td>
                     <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">
                       {formatoFecha(s.created_at)}
@@ -401,13 +477,26 @@ export default function PanelControlMaestro({
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => setPdfSolicitudId(s.id)}
-                        className="flex items-center gap-1 text-xs text-zinc-500 hover:underline dark:text-zinc-400"
-                      >
-                        <FileText size={13} /> Ver PDF
-                      </button>
+                      <div className="flex items-center justify-end gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setPdfSolicitudId(s.id)}
+                          className="flex items-center gap-1 text-xs text-zinc-500 hover:underline dark:text-zinc-400"
+                        >
+                          <FileText size={13} /> Ver PDF
+                        </button>
+                        {s.estado !== "Pagado" && (
+                          <button
+                            type="button"
+                            disabled={eliminandoId === s.id}
+                            onClick={() => eliminarFila(s)}
+                            title="Eliminar solicitud"
+                            className="text-zinc-400 hover:text-red-600 disabled:opacity-50 dark:hover:text-red-400"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

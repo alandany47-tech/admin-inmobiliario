@@ -124,6 +124,47 @@ export async function subirComprobante(solicitudId, formData) {
   return { ok: true, url: publicUrl };
 }
 
+/**
+ * Elimina una solicitud de pago. Bloqueada si está 'Pagado' (ya movió dinero
+ * en Tesorería; hay que revertir el pago desde ahí primero, nunca un delete
+ * directo sobre una solicitud con saldo dispersado). Si tiene comprobante
+ * adjunto, también lo borra del bucket.
+ */
+export async function eliminarSolicitud(id) {
+  const supabase = await createClient();
+
+  const { data: solicitud, error: errorConsulta } = await supabase
+    .from("solicitudes_pago")
+    .select("estado, comprobante_url")
+    .eq("id", id)
+    .single();
+
+  if (errorConsulta) {
+    return { error: `No se pudo consultar la solicitud: ${errorConsulta.message}` };
+  }
+  if (solicitud.estado === "Pagado") {
+    return { error: "No se puede eliminar una solicitud pagada. Revierte el pago desde Tesorería primero." };
+  }
+
+  if (solicitud.comprobante_url) {
+    const ruta = solicitud.comprobante_url.split("/comprobantes/")[1];
+    if (ruta) {
+      await supabase.storage.from("comprobantes").remove([ruta]);
+    }
+  }
+
+  const { error } = await supabase.from("solicitudes_pago").delete().eq("id", id);
+  if (error) {
+    return { error: `No se pudo eliminar la solicitud: ${error.message}` };
+  }
+
+  revalidatePath("/control-maestro");
+  revalidatePath("/autorizaciones");
+  revalidatePath("/historial");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
 /** Elimina el comprobante de pago del bucket "comprobantes" y limpia su referencia en la solicitud. */
 export async function eliminarComprobante(solicitudId) {
   const supabase = await createClient();

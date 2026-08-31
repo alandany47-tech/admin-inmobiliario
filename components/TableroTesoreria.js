@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   ArrowDownCircle,
   ArrowUpCircle,
@@ -75,7 +74,6 @@ export default function TableroTesoreria({
   solicitudes: solicitudesIniciales,
   proyectos,
 }) {
-  const router = useRouter();
   const [cuentas, setCuentas] = useState(cuentasIniciales);
   const [movimientos, setMovimientos] = useState(movimientosIniciales);
   const [solicitudes, setSolicitudes] = useState(solicitudesIniciales);
@@ -162,7 +160,6 @@ export default function TableroTesoreria({
 
     setCuentas((filas) => filas.map((c) => (c.id === resultado.cuenta.id ? resultado.cuenta : c)));
     setEditandoSaldo(false);
-    router.refresh();
   }
 
   function abrirModalMovimiento() {
@@ -208,7 +205,6 @@ export default function TableroTesoreria({
       )
     );
     setModalAbierto(false);
-    router.refresh();
   }
 
   function iniciarEdicionMonto(movimiento) {
@@ -251,7 +247,6 @@ export default function TableroTesoreria({
       )
     );
     setEditandoMovId(null);
-    router.refresh();
   }
 
   async function eliminarMovimientoBitacora(movimiento) {
@@ -277,7 +272,6 @@ export default function TableroTesoreria({
     setCuentas((filas) =>
       filas.map((c) => (c.id === movimiento.cuenta_id ? { ...c, saldo_actual: resultado.saldoActual } : c))
     );
-    router.refresh();
   }
 
   async function revertirPago(movimiento) {
@@ -301,7 +295,6 @@ export default function TableroTesoreria({
 
     setCuentas(resultado.cuentas);
     setMovimientos(resultado.movimientos);
-    router.refresh();
   }
 
   async function exportarExcel() {
@@ -346,7 +339,6 @@ export default function TableroTesoreria({
 
     setSolicitudes((filas) => filas.filter((s) => s.id !== solicitudActiva.id));
     setSolicitudActiva(null);
-    router.refresh();
   }
 
   return (

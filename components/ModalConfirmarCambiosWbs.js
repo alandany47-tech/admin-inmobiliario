@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { AlertTriangle, X } from "lucide-react";
 
 function formatoMXN(valor) {
@@ -8,6 +9,8 @@ function formatoMXN(valor) {
 
 /** Modal de confirmación para aplicar en lote los cambios de presupuesto/renombre pendientes en el árbol WBS. */
 export default function ModalConfirmarCambiosWbs({ cambios, procesando, error, onConfirmar, onCancelar }) {
+  const [comentario, setComentario] = useState("");
+
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 px-4">
       <div className="flex max-h-[85vh] w-full max-w-lg flex-col gap-4 overflow-y-auto rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-900">
@@ -61,6 +64,20 @@ export default function ModalConfirmarCambiosWbs({ cambios, procesando, error, o
           ))}
         </ul>
 
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Comentario / Número de Orden de Cambio (OC)
+          </label>
+          <textarea
+            value={comentario}
+            onChange={(e) => setComentario(e.target.value)}
+            disabled={procesando}
+            rows={2}
+            placeholder="Ej. OC-2024-003: ajuste por cambio de alcance"
+            className="rounded border border-black/[.08] bg-transparent px-3 py-2 text-sm disabled:opacity-50 dark:border-white/[.145]"
+          />
+        </div>
+
         {error && (
           <p className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
             <AlertTriangle size={14} /> {error}
@@ -78,8 +95,8 @@ export default function ModalConfirmarCambiosWbs({ cambios, procesando, error, o
           </button>
           <button
             type="button"
-            onClick={onConfirmar}
-            disabled={procesando}
+            onClick={() => onConfirmar(comentario.trim())}
+            disabled={procesando || !comentario.trim()}
             className="rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50 dark:hover:bg-[#ccc]"
           >
             {procesando ? "Guardando…" : "Confirmar y Guardar"}
