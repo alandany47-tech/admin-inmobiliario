@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import {
+  Building2,
   FileText,
   Landmark,
   LayoutDashboard,
@@ -20,6 +21,7 @@ import {
 
 const ENLACES = [
   { href: "/dashboard", label: "Dashboard", icon: TrendingUp },
+  { href: "/proyectos", label: "Proyectos", icon: Building2 },
   { href: "/solicitud", label: "Solicitudes", icon: FileText },
   { href: "/autorizaciones", label: "Autorizaciones", icon: ShieldCheck },
   { href: "/tesoreria", label: "Tesorería", icon: Landmark },

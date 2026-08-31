@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarClock, CheckCircle2, Plus, Search, Trash2, Users, X } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, Plus, Search, Trash2, Users, X } from "lucide-react";
 import { crearSolicitudPago, getFolioPreview } from "@/app/actions/solicitudes";
 import { construirRutaWbs } from "@/lib/wbs";
 
@@ -67,6 +67,9 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
   const [proveedores, setProveedores] = useState(proveedoresIniciales);
   const [modoProveedor, setModoProveedor] = useState("existente");
   const [proveedorId, setProveedorId] = useState("");
+  const [proveedorBusqueda, setProveedorBusqueda] = useState("");
+  const [proveedorAbierto, setProveedorAbierto] = useState(false);
+  const proveedorBoxRef = useRef(null);
   const [proveedorNuevo, setProveedorNuevo] = useState(PROVEEDOR_NUEVO_VACIO);
   const [form, setForm] = useState(FORM_VACIO);
   const [partidas, setPartidas] = useState([partidaVacia()]);
@@ -100,6 +103,25 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
   );
   const total = useMemo(() => Math.round((subtotal + iva) * 100) / 100, [subtotal, iva]);
 
+  const proveedoresFiltrados = useMemo(() => {
+    const termino = proveedorBusqueda.trim().toLowerCase();
+    if (!termino) return proveedores;
+    return proveedores.filter(
+      (p) =>
+        p.razon_social.toLowerCase().includes(termino) || (p.rfc ?? "").toLowerCase().includes(termino)
+    );
+  }, [proveedores, proveedorBusqueda]);
+
+  useEffect(() => {
+    function alClickFuera(e) {
+      if (proveedorBoxRef.current && !proveedorBoxRef.current.contains(e.target)) {
+        setProveedorAbierto(false);
+      }
+    }
+    document.addEventListener("mousedown", alClickFuera);
+    return () => document.removeEventListener("mousedown", alClickFuera);
+  }, []);
+
   const wbsPorId = useMemo(() => new Map(wbsCatalog.map((w) => [w.id, w])), [wbsCatalog]);
   const wbsConHijos = useMemo(
     () => new Set(wbsCatalog.filter((w) => w.parent_id).map((w) => w.parent_id)),
@@ -124,6 +146,10 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
     if (!termino) return wbsHojas;
     return wbsHojas.filter((w) => `${w.codigo ?? ""} ${w.ruta}`.toLowerCase().includes(termino));
   }, [wbsHojas, wbsBusqueda]);
+
+  const wbsSeleccionado = form.wbsCatalogId ? wbsPorId.get(form.wbsCatalogId) : null;
+  const excedePresupuesto =
+    wbsSeleccionado && wbsSeleccionado.disponible != null && total > Number(wbsSeleccionado.disponible);
 
   useEffect(() => {
     function alClickFuera(e) {
@@ -152,7 +178,14 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
   function cambiarModoProveedor(modo) {
     setModoProveedor(modo);
     setProveedorId("");
+    setProveedorBusqueda("");
     setProveedorNuevo(PROVEEDOR_NUEVO_VACIO);
+  }
+
+  function seleccionarProveedor(p) {
+    setProveedorId(String(p.id));
+    setProveedorBusqueda(`${p.rfc ? "[" + p.rfc + "] " : ""}${p.razon_social}`);
+    setProveedorAbierto(false);
   }
 
   function actualizarPartida(id, campo, valor) {
@@ -262,8 +295,10 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
     setPartidas([partidaVacia()]);
     setAplicaIva(true);
     setProveedorId("");
+    setProveedorBusqueda("");
     setProveedorNuevo(PROVEEDOR_NUEVO_VACIO);
     setModoProveedor("existente");
+    setWbsBusqueda("");
     setToast(resultado.folio);
   }
 
@@ -356,18 +391,48 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
             </div>
 
             {modoProveedor === "existente" ? (
-              <select
-                className={inputClase}
-                value={proveedorId}
-                onChange={(e) => setProveedorId(e.target.value)}
-              >
-                <option value="">Selecciona un proveedor…</option>
-                {proveedores.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.razon_social}
-                  </option>
-                ))}
-              </select>
+              <div className="relative" ref={proveedorBoxRef}>
+                <Search
+                  size={14}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
+                />
+                <input
+                  type="text"
+                  placeholder="Busca por razón social o RFC…"
+                  className={`${inputClase} w-full pl-8`}
+                  value={proveedorBusqueda}
+                  onFocus={() => setProveedorAbierto(true)}
+                  onChange={(e) => {
+                    setProveedorBusqueda(e.target.value);
+                    setProveedorAbierto(true);
+                    if (proveedorId) setProveedorId("");
+                  }}
+                />
+
+                {proveedorAbierto && (
+                  <div className="absolute top-full z-10 mt-1 max-h-64 w-full overflow-y-auto rounded border border-black/[.08] bg-white shadow-lg dark:border-white/[.145] dark:bg-zinc-900">
+                    {proveedoresFiltrados.length === 0 ? (
+                      <p className="px-3 py-2.5 text-sm text-zinc-500 dark:text-zinc-400">Sin resultados.</p>
+                    ) : (
+                      proveedoresFiltrados.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => seleccionarProveedor(p)}
+                          className="flex w-full items-center gap-1.5 px-3 py-2 text-left text-sm hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+                        >
+                          {p.rfc && (
+                            <span className="shrink-0 font-mono text-xs text-zinc-500 dark:text-zinc-400">
+                              [{p.rfc}]
+                            </span>
+                          )}
+                          <span className="text-black dark:text-zinc-50">{p.razon_social}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             ) : (
               <div className="flex flex-col gap-3 rounded border border-dashed border-black/[.08] p-4 dark:border-white/[.145]">
                 <div className="flex flex-col gap-1.5">
@@ -507,20 +572,35 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
                       key={w.id}
                       type="button"
                       onClick={() => seleccionarWbs(w)}
-                      className="flex w-full items-start gap-1.5 px-3 py-2 text-left text-sm hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+                      className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-black/[.04] dark:hover:bg-white/[.06]"
                     >
-                      {w.codigo && (
-                        <span className="shrink-0 font-mono text-xs text-zinc-500 dark:text-zinc-400">
-                          [{w.codigo}]
+                      <span className="flex items-start gap-1.5">
+                        {w.codigo && (
+                          <span className="shrink-0 font-mono text-xs text-zinc-500 dark:text-zinc-400">
+                            [{w.codigo}]
+                          </span>
+                        )}
+                        <span className="text-black dark:text-zinc-50">{w.ruta}</span>
+                      </span>
+                      {w.disponible != null && (
+                        <span className="shrink-0 text-xs text-zinc-500 dark:text-zinc-400">
+                          Disp. {formatoMXN(Number(w.disponible))}
                         </span>
                       )}
-                      <span className="text-black dark:text-zinc-50">{w.ruta}</span>
                     </button>
                   ))
                 )}
               </div>
             )}
           </div>
+
+          {excedePresupuesto && (
+            <p className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+              <AlertTriangle size={14} />
+              El total de esta solicitud ({formatoMXN(total)}) excede el disponible presupuestal de la
+              partida seleccionada ({formatoMXN(Number(wbsSeleccionado.disponible))}).
+            </p>
+          )}
         </section>
 
         {/* Partidas */}

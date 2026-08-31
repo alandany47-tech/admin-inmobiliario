@@ -8,12 +8,17 @@ import { normalizarPartidaWbs } from "@/lib/wbs";
 // - Backfill de wbs_catalog_id para solicitudes históricas.
 // - Vista de detalle por partida con el listado de solicitudes que la componen.
 
-/** Lista el catálogo WBS (entradas generales y específicas por proyecto). */
+/**
+ * Lista el catálogo WBS (entradas generales y específicas por proyecto),
+ * incluyendo presupuesto/ejercido/disponible de wbs_presupuesto_resumen para
+ * que el combobox de SolicitudPagoForm pueda alertar si una solicitud excede
+ * el disponible de la subpartida hoja seleccionada.
+ */
 export async function getWbsCatalog() {
   const supabase = await createClient();
   const { data, error } = await supabase
-    .from("wbs_catalog")
-    .select("id, proyecto_id, categoria, partida, codigo, parent_id")
+    .from("wbs_presupuesto_resumen")
+    .select("id, proyecto_id, categoria, partida, codigo, parent_id, presupuesto, ejercido, disponible, activo")
     .order("categoria", { ascending: true })
     .order("partida", { ascending: true });
 

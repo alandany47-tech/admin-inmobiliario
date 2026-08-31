@@ -1,8 +1,9 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Pencil, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, FileDown, Pencil, Upload } from "lucide-react";
 import { getWbsPresupuesto, actualizarPresupuestoWbs, renombrarPartidaWbs } from "@/app/actions/wbs";
+import { compararCodigoWbsNatural } from "@/lib/wbs";
 import ModalImportarWbs from "@/components/ModalImportarWbs";
 import ModalDesglosePagosWbs from "@/components/ModalDesglosePagosWbs";
 
@@ -11,13 +12,34 @@ function formatoMXN(valor) {
 }
 
 /**
+ * Compara dos nodos/grupos agregados según el criterio de orden activo.
+ * Para "codigo" usa orden natural (1.2 antes de 1.10) y los códigos ausentes
+ * siempre van al final, sin importar la dirección; para presupuesto/ejercido
+ * compara los agregados numéricos. `direccion` invierte el resultado salvo en
+ * el caso de códigos ausentes (regla ya resuelta por compararCodigoWbsNatural).
+ */
+function compararNodos(a, b, criterio, direccion) {
+  if (criterio === "codigo") {
+    const cmp = compararCodigoWbsNatural(a.codigo, b.codigo);
+    if (!a.codigo || !b.codigo) return cmp;
+    return direccion === "desc" ? -cmp : cmp;
+  }
+  const valorA = criterio === "presupuesto" ? a.presupuestoAgg : a.ejercidoAgg;
+  const valorB = criterio === "presupuesto" ? b.presupuestoAgg : b.ejercidoAgg;
+  const cmp = valorA - valorB;
+  return direccion === "desc" ? -cmp : cmp;
+}
+
+/**
  * Arma el árbol WBS a partir de la lista plana (relación parent_id) y agrupa
  * las raíces por categoría. Cada nodo recibe hijos[] y los totales agregados
  * (presupuestoAgg/ejercidoAgg/disponibleAgg) calculados en el cliente: en un
  * nodo hoja son sus propios valores, en un nodo con hijos son la suma de los
- * agregados de sus hijos.
+ * agregados de sus hijos. `orden` ({criterio, direccion}) determina el orden
+ * jerárquico natural aplicado a hijos, partidas dentro de cada categoría y
+ * categorías entre sí.
  */
-function construirArbol(filas) {
+function construirArbol(filas, orden) {
   const porId = new Map(filas.map((f) => [f.id, { ...f, hijos: [] }]));
   const raices = [];
 
@@ -51,6 +73,12 @@ function construirArbol(filas) {
   }
   raices.forEach(agregar);
 
+  function ordenarHijos(nodo) {
+    nodo.hijos.forEach(ordenarHijos);
+    nodo.hijos.sort((a, b) => compararNodos(a, b, orden.criterio, orden.direccion));
+  }
+  raices.forEach(ordenarHijos);
+
   const grupos = new Map();
   raices.forEach((nodo) => {
     const categoria = nodo.categoria || "Sin categoría";
@@ -60,13 +88,22 @@ function construirArbol(filas) {
 
   const hojas = [...porId.values()].filter((nodo) => nodo.hijos.length === 0);
 
-  const arbol = [...grupos.entries()].map(([categoria, nodos]) => ({
-    categoria,
-    nodos,
-    presupuestoAgg: nodos.reduce((s, n) => s + n.presupuestoAgg, 0),
-    ejercidoAgg: nodos.reduce((s, n) => s + n.ejercidoAgg, 0),
-    disponibleAgg: nodos.reduce((s, n) => s + n.disponibleAgg, 0),
-  }));
+  const arbol = [...grupos.entries()].map(([categoria, nodos]) => {
+    nodos.sort((a, b) => compararNodos(a, b, orden.criterio, orden.direccion));
+    return {
+      categoria,
+      nodos,
+      presupuestoAgg: nodos.reduce((s, n) => s + n.presupuestoAgg, 0),
+      ejercidoAgg: nodos.reduce((s, n) => s + n.ejercidoAgg, 0),
+      disponibleAgg: nodos.reduce((s, n) => s + n.disponibleAgg, 0),
+    };
+  });
+
+  arbol.sort((g1, g2) =>
+    orden.criterio === "codigo"
+      ? compararNodos(g1.nodos[0] ?? {}, g2.nodos[0] ?? {}, orden.criterio, orden.direccion)
+      : compararNodos(g1, g2, orden.criterio, orden.direccion)
+  );
 
   return { arbol, hojas };
 }
@@ -226,6 +263,11 @@ function NodoWbs({
   );
 }
 
+function IconoOrden({ activo, direccion }) {
+  if (!activo) return <ArrowUpDown size={12} className="opacity-40" />;
+  return direccion === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />;
+}
+
 function TarjetaKpi({ titulo, valor, negativo }) {
   return (
     <div className="flex flex-col gap-1 rounded-lg border border-black/[.08] bg-white p-4 dark:border-white/[.145] dark:bg-zinc-900">
@@ -312,6 +354,7 @@ export default function PanelPresupuestoWbs({ proyectos }) {
   const [expandidos, setExpandidos] = useState(new Set());
   const [modoEdicion, setModoEdicion] = useState(false);
   const [desgloseNodo, setDesgloseNodo] = useState(null);
+  const [orden, setOrden] = useState({ criterio: "codigo", direccion: "asc" });
 
   useEffect(() => {
     if (!proyectoId) {
@@ -332,7 +375,15 @@ export default function PanelPresupuestoWbs({ proyectos }) {
     };
   }, [proyectoId]);
 
-  const { arbol, hojas } = useMemo(() => construirArbol(filas), [filas]);
+  const { arbol, hojas } = useMemo(() => construirArbol(filas, orden), [filas, orden]);
+
+  function cambiarOrden(criterio) {
+    setOrden((o) =>
+      o.criterio === criterio
+        ? { criterio, direccion: o.direccion === "asc" ? "desc" : "asc" }
+        : { criterio, direccion: criterio === "codigo" ? "asc" : "desc" }
+    );
+  }
 
   const presupuestoTotal = useMemo(() => hojas.reduce((s, h) => s + Number(h.presupuesto), 0), [hojas]);
   const ejercidoTotal = useMemo(() => hojas.reduce((s, h) => s + Number(h.ejercido), 0), [hojas]);
@@ -390,6 +441,22 @@ export default function PanelPresupuestoWbs({ proyectos }) {
     getWbsPresupuesto(Number(proyectoId)).then(setFilas);
   }
 
+  async function descargarPlantilla() {
+    const XLSX = await import("xlsx");
+    const hoja = XLSX.utils.aoa_to_sheet([
+      [
+        "Instrucciones: completa Categoria, Partida y Presupuesto por cada subpartida hoja (Codigo es opcional, ej. 1.1.01). Elimina esta fila antes de importar.",
+      ],
+      ["Codigo", "Categoria", "Partida", "Presupuesto"],
+      ["1.1.01", "Preliminares", "Trazo y nivelación", 0],
+    ]);
+    hoja["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }];
+    hoja["!cols"] = [{ wch: 12 }, { wch: 24 }, { wch: 32 }, { wch: 14 }];
+    const libro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(libro, hoja, "Plantilla WBS");
+    XLSX.writeFile(libro, "plantilla-wbs.xlsx");
+  }
+
   const selectClase =
     "rounded border border-black/[.08] bg-transparent px-3 py-2 text-sm dark:border-white/[.145]";
 
@@ -441,6 +508,13 @@ export default function PanelPresupuestoWbs({ proyectos }) {
           </button>
           <button
             type="button"
+            onClick={descargarPlantilla}
+            className="flex items-center gap-1.5 rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-black/[.04] dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+          >
+            <FileDown size={15} /> Descargar Plantilla Excel
+          </button>
+          <button
+            type="button"
             onClick={() => setModalAbierto(true)}
             disabled={!proyectoId}
             className="flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] disabled:opacity-50 dark:hover:bg-[#ccc]"
@@ -471,11 +545,35 @@ export default function PanelPresupuestoWbs({ proyectos }) {
           <table className="w-full min-w-[1000px] text-sm">
             <thead>
               <tr className="border-b border-black/[.08] bg-black/[.03] text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:border-white/[.145] dark:bg-white/[.04] dark:text-zinc-400">
-                <th className="py-3 pr-4 pl-4">Índice / Código</th>
+                <th className="py-3 pr-4 pl-4">
+                  <button
+                    type="button"
+                    onClick={() => cambiarOrden("codigo")}
+                    className="flex items-center gap-1 uppercase tracking-wide hover:text-zinc-800 dark:hover:text-zinc-200"
+                  >
+                    Índice / Código <IconoOrden activo={orden.criterio === "codigo"} direccion={orden.direccion} />
+                  </button>
+                </th>
                 <th className="px-4 py-3">Categoría</th>
                 <th className="px-4 py-3">Partida</th>
-                <th className="px-4 py-3 text-right">Presupuesto</th>
-                <th className="px-4 py-3 text-right">Ejercido</th>
+                <th className="px-4 py-3 text-right">
+                  <button
+                    type="button"
+                    onClick={() => cambiarOrden("presupuesto")}
+                    className="ml-auto flex items-center gap-1 uppercase tracking-wide hover:text-zinc-800 dark:hover:text-zinc-200"
+                  >
+                    Presupuesto <IconoOrden activo={orden.criterio === "presupuesto"} direccion={orden.direccion} />
+                  </button>
+                </th>
+                <th className="px-4 py-3 text-right">
+                  <button
+                    type="button"
+                    onClick={() => cambiarOrden("ejercido")}
+                    className="ml-auto flex items-center gap-1 uppercase tracking-wide hover:text-zinc-800 dark:hover:text-zinc-200"
+                  >
+                    Ejercido <IconoOrden activo={orden.criterio === "ejercido"} direccion={orden.direccion} />
+                  </button>
+                </th>
                 <th className="px-4 py-3 text-right">Disponible</th>
                 <th className="px-4 py-3">Activo</th>
               </tr>
