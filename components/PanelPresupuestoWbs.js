@@ -1,11 +1,24 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, FileDown, Pencil, Upload } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronDown,
+  ChevronRight,
+  FileDown,
+  Pencil,
+  Save,
+  Upload,
+  X,
+} from "lucide-react";
 import { getWbsPresupuesto, actualizarPresupuestoWbs, renombrarPartidaWbs } from "@/app/actions/wbs";
 import { compararCodigoWbsNatural } from "@/lib/wbs";
 import ModalImportarWbs from "@/components/ModalImportarWbs";
 import ModalDesglosePagosWbs from "@/components/ModalDesglosePagosWbs";
+import ModalConfirmarCambiosWbs from "@/components/ModalConfirmarCambiosWbs";
 
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -113,7 +126,8 @@ function NodoWbs({
   nivel,
   expandidos,
   onAlternarExpandido,
-  guardandoMap,
+  bloqueado,
+  versionCambios,
   renombrandoId,
   onIniciarRenombre,
   onCancelarRenombre,
@@ -125,7 +139,6 @@ function NodoWbs({
   const esHoja = nodo.hijos.length === 0;
   const expandido = expandidos.has(nodo.id);
   const renombrando = renombrandoId === nodo.id;
-  const guardando = !!guardandoMap[nodo.id];
   const [presupuesto, setPresupuesto] = useState(nodo.presupuesto);
   const [categoria, setCategoria] = useState(nodo.categoria);
   const [partida, setPartida] = useState(nodo.partida);
@@ -204,7 +217,7 @@ function NodoWbs({
               type="number"
               min="0"
               step="0.01"
-              disabled={guardando}
+              disabled={bloqueado}
               className={inputMontoClase}
               value={presupuesto}
               onChange={(e) => setPresupuesto(e.target.value)}
@@ -244,12 +257,13 @@ function NodoWbs({
         expandido &&
         nodo.hijos.map((hijo) => (
           <NodoWbs
-            key={hijo.id}
+            key={`${hijo.id}-v${versionCambios}`}
             nodo={hijo}
             nivel={nivel + 1}
             expandidos={expandidos}
             onAlternarExpandido={onAlternarExpandido}
-            guardandoMap={guardandoMap}
+            bloqueado={bloqueado}
+            versionCambios={versionCambios}
             renombrandoId={renombrandoId}
             onIniciarRenombre={onIniciarRenombre}
             onCancelarRenombre={onCancelarRenombre}
@@ -343,18 +357,31 @@ function DashboardWbs({ arbol, presupuestoTotal, ejercidoTotal, disponibleTotal,
 
 /** Panel de presupuesto WBS: árbol jerárquico colapsable, edición inline y dashboard de avance. */
 export default function PanelPresupuestoWbs({ proyectos }) {
+  const router = useRouter();
   const [proyectoId, setProyectoId] = useState(proyectos[0]?.id ? String(proyectos[0].id) : "");
   const [filas, setFilas] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
   const [modalAbierto, setModalAbierto] = useState(false);
-  const [guardando, setGuardando] = useState({});
   const [renombrando, setRenombrando] = useState(null);
   const [vista, setVista] = useState("arbol");
   const [expandidos, setExpandidos] = useState(new Set());
   const [modoEdicion, setModoEdicion] = useState(false);
   const [desgloseNodo, setDesgloseNodo] = useState(null);
   const [orden, setOrden] = useState({ criterio: "codigo", direccion: "asc" });
+
+  // Cambios de presupuesto/renombre en modo edición: se acumulan aquí sin
+  // tocar el servidor hasta que el usuario confirma explícitamente en el
+  // modal de "Guardar Cambios" (previamente cada edición disparaba su propia
+  // Server Action al perder el foco). Clave = id numérico de wbs_catalog.
+  const [cambiosPendientes, setCambiosPendientes] = useState({});
+  const [modalConfirmarAbierto, setModalConfirmarAbierto] = useState(false);
+  const [guardandoLote, setGuardandoLote] = useState(false);
+  const [errorLote, setErrorLote] = useState("");
+  // Se incrementa al cancelar o al aplicar cambios para forzar el remount de
+  // NodoWbs (su input de presupuesto/categoría/partida solo lee su valor
+  // inicial una vez) y así sincronizar el valor mostrado con el real.
+  const [versionCambios, setVersionCambios] = useState(0);
 
   useEffect(() => {
     if (!proyectoId) {
@@ -375,7 +402,29 @@ export default function PanelPresupuestoWbs({ proyectos }) {
     };
   }, [proyectoId]);
 
-  const { arbol, hojas } = useMemo(() => construirArbol(filas, orden), [filas, orden]);
+  // Superpone los cambios pendientes (aún no confirmados) sobre `filas` para
+  // que el árbol y los agregados reflejen la edición en curso sin haber
+  // tocado el servidor todavía.
+  const filasConCambios = useMemo(() => {
+    if (Object.keys(cambiosPendientes).length === 0) return filas;
+    return filas.map((f) => {
+      const cambio = cambiosPendientes[f.id];
+      if (!cambio) return f;
+      const presupuesto = cambio.presupuesto ?? f.presupuesto;
+      return {
+        ...f,
+        presupuesto,
+        categoria: cambio.categoria ?? f.categoria,
+        partida: cambio.partida ?? f.partida,
+        disponible: presupuesto - f.ejercido,
+      };
+    });
+  }, [filas, cambiosPendientes]);
+
+  const { arbol, hojas } = useMemo(
+    () => construirArbol(filasConCambios, orden),
+    [filasConCambios, orden]
+  );
 
   function cambiarOrden(criterio) {
     setOrden((o) =>
@@ -409,37 +458,126 @@ export default function PanelPresupuestoWbs({ proyectos }) {
     });
   }
 
-  async function guardarPresupuesto(id, valor) {
-    const monto = parseFloat(valor);
-    if (!(monto >= 0)) return;
-    setGuardando((g) => ({ ...g, [id]: true }));
-    setError("");
-    const resultado = await actualizarPresupuestoWbs(id, monto);
-    if (resultado.error) {
-      setError(resultado.error);
-    } else {
-      setFilas((fs) =>
-        fs.map((f) => (f.id === id ? { ...f, presupuesto: monto, disponible: monto - f.ejercido } : f))
-      );
-    }
-    setGuardando((g) => ({ ...g, [id]: false }));
+  /**
+   * Registra/actualiza el cambio pendiente de una fila. Si el resultado
+   * coincide con el valor original en todos sus campos, limpia la entrada
+   * (evita mostrar en la barra flotante ediciones que el usuario deshizo a
+   * mano, ej. escribir y borrar).
+   */
+  function actualizarCambioPendiente(id, cambio) {
+    const original = filas.find((f) => f.id === id);
+    if (!original) return;
+
+    setCambiosPendientes((prev) => {
+      const previo = prev[id] ?? {
+        id: original.id,
+        original: {
+          presupuesto: original.presupuesto,
+          categoria: original.categoria,
+          partida: original.partida,
+          codigo: original.codigo,
+        },
+      };
+      const siguiente = { ...previo, ...cambio };
+
+      if (siguiente.presupuesto !== undefined && Number(siguiente.presupuesto) === Number(previo.original.presupuesto)) {
+        delete siguiente.presupuesto;
+      }
+      if (siguiente.categoria !== undefined && siguiente.categoria === previo.original.categoria) {
+        delete siguiente.categoria;
+      }
+      if (siguiente.partida !== undefined && siguiente.partida === previo.original.partida) {
+        delete siguiente.partida;
+      }
+
+      if (siguiente.presupuesto === undefined && siguiente.categoria === undefined && siguiente.partida === undefined) {
+        const { [id]: _omitido, ...resto } = prev;
+        return resto;
+      }
+      return { ...prev, [id]: siguiente };
+    });
   }
 
-  async function guardarRenombre(id, categoria, partida) {
-    setError("");
-    const resultado = await renombrarPartidaWbs(id, categoria, partida);
-    if (resultado.error) {
-      setError(resultado.error);
-    } else {
-      setFilas((fs) => fs.map((f) => (f.id === id ? { ...f, categoria, partida } : f)));
-      setRenombrando(null);
+  function marcarPresupuestoPendiente(id, valor) {
+    const monto = parseFloat(valor);
+    if (!(monto >= 0)) return;
+    actualizarCambioPendiente(id, { presupuesto: monto });
+  }
+
+  function marcarRenombrePendiente(id, categoria, partida) {
+    if (!categoria?.trim() || !partida?.trim()) {
+      setError("Captura categoría y partida.");
+      return;
     }
+    setError("");
+    actualizarCambioPendiente(id, { categoria: categoria.trim(), partida: partida.trim() });
+    setRenombrando(null);
+  }
+
+  function cancelarCambiosPendientes() {
+    setCambiosPendientes({});
+    setRenombrando(null);
+    setError("");
+    setVersionCambios((v) => v + 1);
+  }
+
+  /** Aplica en lote los cambios confirmados en el modal: Server Actions secuenciales + refresco de filas y de la ruta. */
+  async function confirmarCambiosPendientes() {
+    setGuardandoLote(true);
+    setErrorLote("");
+
+    for (const cambio of Object.values(cambiosPendientes)) {
+      if (cambio.presupuesto !== undefined) {
+        const resultado = await actualizarPresupuestoWbs(cambio.id, cambio.presupuesto);
+        if (resultado.error) {
+          setErrorLote(resultado.error);
+          setGuardandoLote(false);
+          return;
+        }
+      }
+      if (cambio.categoria !== undefined || cambio.partida !== undefined) {
+        const resultado = await renombrarPartidaWbs(
+          cambio.id,
+          cambio.categoria ?? cambio.original.categoria,
+          cambio.partida ?? cambio.original.partida
+        );
+        if (resultado.error) {
+          setErrorLote(resultado.error);
+          setGuardandoLote(false);
+          return;
+        }
+      }
+    }
+
+    const datos = await getWbsPresupuesto(Number(proyectoId));
+    setFilas(datos);
+    setCambiosPendientes({});
+    setModalConfirmarAbierto(false);
+    setGuardandoLote(false);
+    setVersionCambios((v) => v + 1);
+    router.refresh();
   }
 
   function importado() {
     setModalAbierto(false);
     getWbsPresupuesto(Number(proyectoId)).then(setFilas);
   }
+
+  const cantidadCambiosPendientes = Object.keys(cambiosPendientes).length;
+  const cambiosParaModal = useMemo(
+    () =>
+      Object.values(cambiosPendientes).map((c) => ({
+        id: c.id,
+        codigo: c.original.codigo,
+        categoriaAnterior: c.original.categoria,
+        partidaAnterior: c.original.partida,
+        presupuestoAnterior: c.original.presupuesto,
+        presupuestoNuevo: c.presupuesto,
+        categoriaNueva: c.categoria,
+        partidaNueva: c.partida,
+      })),
+    [cambiosPendientes]
+  );
 
   async function descargarPlantilla() {
     const XLSX = await import("xlsx");
@@ -608,17 +746,18 @@ export default function PanelPresupuestoWbs({ proyectos }) {
                     {expandidoGrupo &&
                       grupo.nodos.map((nodo) => (
                         <NodoWbs
-                          key={nodo.id}
+                          key={`${nodo.id}-v${versionCambios}`}
                           nodo={nodo}
                           nivel={1}
                           expandidos={expandidos}
                           onAlternarExpandido={alternarExpandidoNodo}
-                          guardandoMap={guardando}
+                          bloqueado={guardandoLote}
+                          versionCambios={versionCambios}
                           renombrandoId={renombrando}
                           onIniciarRenombre={setRenombrando}
                           onCancelarRenombre={() => setRenombrando(null)}
-                          onGuardarPresupuesto={guardarPresupuesto}
-                          onGuardarRenombre={guardarRenombre}
+                          onGuardarPresupuesto={marcarPresupuestoPendiente}
+                          onGuardarRenombre={marcarRenombrePendiente}
                           modoEdicion={modoEdicion}
                           onVerDesglose={setDesgloseNodo}
                         />
@@ -645,6 +784,41 @@ export default function PanelPresupuestoWbs({ proyectos }) {
         open={desgloseNodo !== null}
         onClose={() => setDesgloseNodo(null)}
       />
+
+      {cantidadCambiosPendientes > 0 && !modalConfirmarAbierto && (
+        <div className="fixed inset-x-0 bottom-6 z-20 flex justify-center px-4">
+          <div className="flex items-center gap-4 rounded-full border border-black/[.08] bg-white px-5 py-3 shadow-lg dark:border-white/[.145] dark:bg-zinc-900">
+            <span className="text-sm text-zinc-600 dark:text-zinc-400">
+              {cantidadCambiosPendientes} partida{cantidadCambiosPendientes === 1 ? "" : "s"} con cambios sin
+              guardar
+            </span>
+            <button
+              type="button"
+              onClick={cancelarCambiosPendientes}
+              className="flex items-center gap-1.5 rounded-full border border-black/[.08] px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-black/[.04] dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+            >
+              <X size={14} /> Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalConfirmarAbierto(true)}
+              className="flex items-center gap-1.5 rounded-full bg-foreground px-4 py-1.5 text-sm font-medium text-background hover:bg-[#383838] dark:hover:bg-[#ccc]"
+            >
+              <Save size={14} /> Guardar Cambios
+            </button>
+          </div>
+        </div>
+      )}
+
+      {modalConfirmarAbierto && (
+        <ModalConfirmarCambiosWbs
+          cambios={cambiosParaModal}
+          procesando={guardandoLote}
+          error={errorLote}
+          onConfirmar={confirmarCambiosPendientes}
+          onCancelar={() => setModalConfirmarAbierto(false)}
+        />
+      )}
     </div>
   );
 }

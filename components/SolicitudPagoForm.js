@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CalendarClock, CheckCircle2, Plus, Search, Trash2, Users, X } from "lucide-react";
 import { crearSolicitudPago, getFolioPreview } from "@/app/actions/solicitudes";
-import { construirRutaWbs } from "@/lib/wbs";
+import { compararCodigoWbsNatural, construirRutaWbs } from "@/lib/wbs";
 
 const TASA_IVA = 0.16;
 const METODOS_PAGO = ["Transferencia bancaria", "Efectivo"];
@@ -133,7 +133,8 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
       wbsCatalog
         .filter((w) => !wbsConHijos.has(w.id))
         .filter((w) => w.proyecto_id === null || String(w.proyecto_id) === form.proyectoId)
-        .map((w) => ({ ...w, ruta: construirRutaWbs(w, wbsPorId) })),
+        .map((w) => ({ ...w, ruta: construirRutaWbs(w, wbsPorId) }))
+        .sort((a, b) => compararCodigoWbsNatural(a.codigo, b.codigo)),
     [wbsCatalog, wbsConHijos, wbsPorId, form.proyectoId]
   );
 
