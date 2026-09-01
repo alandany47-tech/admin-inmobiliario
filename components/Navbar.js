@@ -11,8 +11,10 @@ import {
   FileText,
   HandCoins,
   Home,
+  KeyRound,
   Landmark,
   LayoutDashboard,
+  LogOut,
   Moon,
   Settings,
   ShieldCheck,
@@ -23,6 +25,7 @@ import {
   Users2,
   Wallet,
 } from "lucide-react";
+import { cerrarSesion } from "@/app/actions/auth";
 
 const ENLACES = [
   { href: "/dashboard", label: "Dashboard", icon: TrendingUp },
@@ -41,11 +44,22 @@ const ENLACES = [
   { href: "/configuracion/plantillas", label: "Plantillas PDF", icon: Settings },
 ];
 
+const NOMBRES_ROL = {
+  SOLICITANTE: "Solicitante",
+  APROBADOR: "Aprobador",
+  TESORERIA: "Tesorería",
+  ADMIN: "Administrador",
+};
+
 /** Navegación lateral global del sistema DIPZ. */
-export default function Navbar() {
+export default function Navbar({ perfil }) {
   const pathname = usePathname();
   const { resolvedTheme, setTheme } = useTheme();
   const [montado, setMontado] = useState(false);
+  const enlaces =
+    perfil?.rol === "ADMIN"
+      ? [...ENLACES, { href: "/configuracion/permisos", label: "Roles y Accesos", icon: KeyRound }]
+      : ENLACES;
 
   // Excepción necesaria: solo así se evita el desfase de hidratación entre
   // el render del servidor (sin tema resuelto) y el del cliente.
@@ -69,7 +83,7 @@ export default function Navbar() {
       </div>
 
       <ul className="flex flex-col gap-1">
-        {ENLACES.map(({ href, label, icon: Icon }) => {
+        {enlaces.map(({ href, label, icon: Icon }) => {
           const activo = pathname === href || pathname.startsWith(`${href}/`);
 
           return (
@@ -90,14 +104,33 @@ export default function Navbar() {
         })}
       </ul>
 
-      <button
-        type="button"
-        onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-        className="mt-auto flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-black/[.04] dark:text-zinc-400 dark:hover:bg-white/[.06]"
-      >
-        {montado && resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
-        {montado ? (resolvedTheme === "dark" ? "Modo Claro" : "Modo Oscuro") : "Tema"}
-      </button>
+      <div className="mt-auto flex flex-col gap-1">
+        <button
+          type="button"
+          onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+          className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-zinc-600 transition-colors hover:bg-black/[.04] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+        >
+          {montado && resolvedTheme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+          {montado ? (resolvedTheme === "dark" ? "Modo Claro" : "Modo Oscuro") : "Tema"}
+        </button>
+
+        {perfil && (
+          <div className="flex items-center justify-between gap-2 border-t border-black/[.08] px-3 pt-3 dark:border-white/[.145]">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">{perfil.nombre}</p>
+              <p className="text-xs text-zinc-500">{NOMBRES_ROL[perfil.rol] ?? perfil.rol}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => cerrarSesion()}
+              title="Cerrar sesión"
+              className="shrink-0 rounded-lg p-2 text-zinc-500 transition-colors hover:bg-black/[.04] hover:text-zinc-800 dark:hover:bg-white/[.06] dark:hover:text-zinc-200"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        )}
+      </div>
     </nav>
   );
 }
