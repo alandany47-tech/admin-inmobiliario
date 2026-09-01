@@ -3,24 +3,61 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
-/** Lista proyectos con presupuesto, total pagado y conteo de partidas WBS (RPC get_proyectos_con_estadisticas). */
+/**
+ * Lista proyectos con presupuesto, total pagado y conteo de partidas WBS
+ * (RPC get_proyectos_con_estadisticas) más su branding/estatus (columnas
+ * propias de `proyectos`, fuera de la RPC — se agregan aquí en JS en vez de
+ * tocar la función de Postgres).
+ */
 export async function getProyectosStats() {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("get_proyectos_con_estadisticas");
+  const [{ data, error }, { data: branding, error: errorBranding }] = await Promise.all([
+    supabase.rpc("get_proyectos_con_estadisticas"),
+    supabase.from("proyectos").select("id, logo_proyecto_url, color_primario, color_secundario, estatus"),
+  ]);
 
   if (error) {
     console.error("Error al consultar estadísticas de proyectos:", error.message);
     return [];
   }
+  if (errorBranding) {
+    console.error("Error al consultar branding de proyectos:", errorBranding.message);
+  }
 
-  return data.map((p) => ({
-    id: p.id,
-    codigo: p.codigo,
-    nombre: p.nombre,
-    presupuesto: Number(p.presupuesto),
-    totalPagado: Number(p.total_pagado),
-    totalPartidasWbs: Number(p.total_partidas_wbs),
-  }));
+  const brandingPorId = new Map((branding ?? []).map((b) => [b.id, b]));
+
+  return data.map((p) => {
+    const b = brandingPorId.get(p.id);
+    return {
+      id: p.id,
+      codigo: p.codigo,
+      nombre: p.nombre,
+      presupuesto: Number(p.presupuesto),
+      totalPagado: Number(p.total_pagado),
+      totalPartidasWbs: Number(p.total_partidas_wbs),
+      logoProyectoUrl: b?.logo_proyecto_url ?? null,
+      colorPrimario: b?.color_primario ?? "#0f172a",
+      colorSecundario: b?.color_secundario ?? "#2563eb",
+      estatus: b?.estatus ?? "En Desarrollo",
+    };
+  });
+}
+
+const ESTATUS_PROYECTO_VALIDOS = ["En Desarrollo", "Concluido", "Archivado"];
+
+/** Branding (logo + colores) y estatus de todos los proyectos, para el Cotizador y los documentos con logo dual. */
+export async function getProyectosBranding() {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("proyectos")
+    .select("id, codigo, nombre, logo_proyecto_url, color_primario, color_secundario, estatus");
+
+  if (error) {
+    console.error("Error al consultar el branding de proyectos:", error.message);
+    return [];
+  }
+
+  return data;
 }
 
 function validarDatosProyecto({ codigo, nombre, presupuesto }) {
@@ -29,6 +66,15 @@ function validarDatosProyecto({ codigo, nombre, presupuesto }) {
   const monto = Number(presupuesto);
   if (!Number.isFinite(monto) || monto < 0) return "Captura un presupuesto válido.";
   return null;
+}
+
+function datosBrandingProyecto(datos) {
+  return {
+    logo_proyecto_url: datos.logoProyectoUrl?.trim() || null,
+    color_primario: datos.colorPrimario?.trim() || "#0f172a",
+    color_secundario: datos.colorSecundario?.trim() || "#2563eb",
+    estatus: ESTATUS_PROYECTO_VALIDOS.includes(datos.estatus) ? datos.estatus : "En Desarrollo",
+  };
 }
 
 /** Crea un proyecto nuevo. El código es único (constraint de base de datos). */
@@ -43,6 +89,7 @@ export async function crearProyecto(datos) {
       codigo: datos.codigo.trim().toUpperCase(),
       nombre: datos.nombre.trim(),
       presupuesto: Number(datos.presupuesto),
+      ...datosBrandingProyecto(datos),
     })
     .select()
     .single();
@@ -56,7 +103,7 @@ export async function crearProyecto(datos) {
   return { ok: true, proyecto: data };
 }
 
-/** Actualiza código/nombre/presupuesto de un proyecto existente. */
+/** Actualiza código/nombre/presupuesto/branding/estatus de un proyecto existente. */
 export async function actualizarProyecto(id, datos) {
   const mensajeError = validarDatosProyecto(datos);
   if (mensajeError) return { error: mensajeError };
@@ -68,6 +115,7 @@ export async function actualizarProyecto(id, datos) {
       codigo: datos.codigo.trim().toUpperCase(),
       nombre: datos.nombre.trim(),
       presupuesto: Number(datos.presupuesto),
+      ...datosBrandingProyecto(datos),
     })
     .eq("id", id);
 

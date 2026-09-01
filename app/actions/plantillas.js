@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
-const CLAVES_VALIDAS = ["RECIBO_PAGO", "ESTADO_CUENTA", "SOLICITUD_PAGO"];
+const CLAVES_VALIDAS = ["RECIBO_PAGO", "ESTADO_CUENTA", "SOLICITUD_PAGO", "COTIZACION"];
 
 /** Lista la configuración de las 3 plantillas PDF (Recibo de Pago, Estado de Cuenta, Solicitud de Pago). */
 export async function getConfiguracionPlantillas() {

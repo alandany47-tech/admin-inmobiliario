@@ -8,6 +8,7 @@ const NOMBRES_CLAVE = {
   RECIBO_PAGO: "Recibo de Pago",
   ESTADO_CUENTA: "Estado de Cuenta",
   SOLICITUD_PAGO: "Solicitud de Pago",
+  COTIZACION: "Cotización",
 };
 
 const inputClase =

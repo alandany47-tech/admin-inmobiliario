@@ -1,4 +1,5 @@
 import { getConfiguracionPlantilla } from "@/app/actions/plantillas";
+import EncabezadoDualLogo from "@/components/EncabezadoDualLogo";
 
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -27,17 +28,7 @@ function HojaRecibo({ pago, config, hojaRef }) {
   return (
     <div ref={hojaRef} className="flex w-[816px] flex-col bg-white p-10 text-black">
       <div className="flex items-center justify-between border-b-4 pb-4" style={{ borderColor: colorPrimario }}>
-        <div className="flex flex-col">
-          {config?.logo_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={config.logo_url} alt="Logo" className="h-10 w-auto object-contain" crossOrigin="anonymous" />
-          ) : (
-            <span className="text-3xl font-black tracking-tight">{config?.encabezado_linea1 || "DIPZ"}</span>
-          )}
-          <span className="text-[10px] font-semibold tracking-[0.2em] text-[#52525c]">
-            {config?.encabezado_linea2 || "THE FUTURE OF REAL ESTATE"}
-          </span>
-        </div>
+        <EncabezadoDualLogo configDipz={config} proyecto={pago.proyecto} />
         <div className="flex flex-col items-end">
           <span className="text-lg font-bold uppercase tracking-wide">Recibo de Pago</span>
           <span className="font-mono text-sm">{pago.folio}</span>

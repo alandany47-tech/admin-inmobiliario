@@ -109,9 +109,12 @@ export default function PanelAlertasVencimiento({ proyectos }) {
                     <div key={a.id} className="flex items-center justify-between gap-2">
                       <span className="truncate text-zinc-700 dark:text-zinc-300">
                         {a.unidadCodigo} — {a.clienteNombre}
+                        {a.tipo === "APARTADO" && (
+                          <span className="ml-1 text-amber-600 dark:text-amber-400">(vence separación)</span>
+                        )}
                       </span>
                       <span className="shrink-0 font-medium text-black dark:text-zinc-50">
-                        {formatoMXN(a.saldo)}
+                        {a.tipo === "APARTADO" ? "—" : formatoMXN(a.saldo)}
                       </span>
                     </div>
                   ))}

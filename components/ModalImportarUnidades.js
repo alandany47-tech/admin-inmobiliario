@@ -30,6 +30,7 @@ export default function ModalImportarUnidades({ proyectoId, onImportado, onCerra
         precioM2: f["Precio m2"] ?? f["Precio m²"] ?? f.precioM2 ?? 0,
         montoLista: f["Monto Lista"] ?? f.montoLista ?? "",
         estatus: f["Estatus"] ?? f.estatus ?? "",
+        esquema: f["Esquema"] ?? f.esquema ?? "",
       }));
 
       const resultadoImport = await importarUnidadesMasivo(proyectoId, normalizadas);
@@ -63,7 +64,7 @@ export default function ModalImportarUnidades({ proyectoId, onImportado, onCerra
             <Upload size={20} />
             {procesando
               ? "Procesando…"
-              : "Selecciona un archivo .xlsx o .csv (columnas: Codigo Unidad, Tipo Uso, Superficie m2, Precio m2, Monto Lista, Estatus)"}
+              : "Selecciona un archivo .xlsx o .csv (columnas: Codigo Unidad, Tipo Uso, Superficie m2, Precio m2, Esquema, Estatus)"}
             <input
               type="file"
               accept=".xlsx,.csv"

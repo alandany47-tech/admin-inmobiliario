@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, FileDown, Search, X } from "lucide-react";
-import { getPlanDePagos, procesarPagoCobranza, getDesglosePagosCliente } from "@/app/actions/cobranza";
+import { CheckCircle2, Download, FileDown, Search, X } from "lucide-react";
+import {
+  getPlanDePagos,
+  procesarPagoCobranza,
+  getDesglosePagosCliente,
+  confirmarFirmaContrato,
+} from "@/app/actions/cobranza";
 import { descargarReciboPago } from "@/components/PlantillaReciboPago";
 import { descargarEstadoCuenta } from "@/components/PlantillaEstadoCuenta";
 import PanelAlertasVencimiento from "@/components/PanelAlertasVencimiento";
@@ -49,6 +54,7 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
 
   const [abono, setAbono] = useState(null);
   const [reciboListo, setReciboListo] = useState(null);
+  const [firma, setFirma] = useState(null);
 
   const boxRef = useRef(null);
   useEffect(() => {
@@ -58,6 +64,14 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
     document.addEventListener("mousedown", alClickFuera);
     return () => document.removeEventListener("mousedown", alClickFuera);
   }, []);
+
+  // Se deriva del plan (que sí se refresca tras cada abono) en vez de
+  // `contrato.monto_enganche_pagado`, que quedaría desfasado en el estado
+  // local hasta la siguiente vez que se reseleccione el contrato.
+  const enganchePagado = useMemo(
+    () => plan.filter((p) => p.tipo_pago === "ENGANCHE").reduce((s, p) => s + Number(p.monto_pagado), 0),
+    [plan]
+  );
 
   const contratosFiltrados = useMemo(() => {
     const termino = busqueda.trim().toLowerCase();
@@ -79,6 +93,28 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
     const data = await getPlanDePagos(c.id);
     setPlan(data);
     setCargandoPlan(false);
+  }
+
+  function abrirFirma() {
+    setFirma({ diaPagoMensual: "1", guardando: false, error: "" });
+  }
+
+  async function confirmarFirma(e) {
+    e.preventDefault();
+    if (!firma) return;
+
+    setFirma((f) => ({ ...f, guardando: true, error: "" }));
+    const resultado = await confirmarFirmaContrato(contrato.id, firma.diaPagoMensual);
+
+    if (resultado.error) {
+      setFirma((f) => ({ ...f, guardando: false, error: resultado.error }));
+      return;
+    }
+
+    setContrato((c) => ({ ...c, contrato_firmado: true, dia_pago_mensual: Number(firma.diaPagoMensual) }));
+    const data = await getPlanDePagos(contrato.id);
+    setPlan(data);
+    setFirma(null);
   }
 
   async function exportarEstadoCuenta() {
@@ -145,6 +181,7 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
       clienteNombre: contrato.clientes?.nombre ?? "",
       proyectoCodigo: contrato.proyectos?.codigo ?? "",
       proyectoNombre: contrato.proyectos?.nombre ?? "",
+      proyecto: contrato.proyectos,
       unidadCodigo: contrato.unidades?.codigo_unidad ?? "",
       tipoPago: abono.fila.tipo_pago,
       monto,
@@ -201,10 +238,26 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
       {contrato && (
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-black/[.08] bg-white p-4 dark:border-white/[.145] dark:bg-zinc-900">
-            <div className="flex flex-col">
-              <span className="font-medium text-black dark:text-zinc-50">
-                {contrato.unidades?.codigo_unidad} — {contrato.clientes?.nombre}
-              </span>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-black dark:text-zinc-50">
+                  {contrato.unidades?.codigo_unidad} — {contrato.clientes?.nombre}
+                </span>
+                {contrato.esquema_venta === "INVERSIONISTA" && (
+                  <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-950 dark:text-purple-400">
+                    Inversionista
+                  </span>
+                )}
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    contrato.contrato_firmado
+                      ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400"
+                      : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400"
+                  }`}
+                >
+                  {contrato.contrato_firmado ? "Firmado" : "Pendiente de Firma"}
+                </span>
+              </div>
               <span className="text-xs text-zinc-500 dark:text-zinc-400">
                 {contrato.proyectos?.codigo} — {contrato.proyectos?.nombre}
               </span>
@@ -213,6 +266,17 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
               <span className="text-sm font-semibold text-black dark:text-zinc-50">
                 {formatoMXN(contrato.monto_total_venta)}
               </span>
+              {!contrato.contrato_firmado &&
+                enganchePagado >= Number(contrato.monto_enganche_pactado) &&
+                Number(contrato.monto_enganche_pactado) > 0 && (
+                  <button
+                    type="button"
+                    onClick={abrirFirma}
+                    className="flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background dark:hover:bg-[#ccc]"
+                  >
+                    <CheckCircle2 size={13} /> Confirmar Firma de Contrato y Activar Calendario
+                  </button>
+                )}
               <button
                 type="button"
                 onClick={exportarEstadoCuenta}
@@ -386,6 +450,65 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
                 className="rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50 dark:hover:bg-[#ccc]"
               >
                 {abono.guardando ? "Procesando…" : "Confirmar Abono"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {firma && (
+        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 px-4">
+          <form
+            onSubmit={confirmarFirma}
+            className="flex w-full max-w-sm flex-col gap-4 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-900"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-black dark:text-zinc-50">Confirmar Firma de Contrato</h3>
+              <button
+                type="button"
+                onClick={() => setFirma(null)}
+                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              El enganche pactado ya se liquidó. Define el día de pago mensual definitivo para activar el
+              calendario de mensualidades y marcar la unidad como VENDIDA.
+            </p>
+
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClase}>Día de Pago Mensual</label>
+              <select
+                className={inputClase}
+                value={firma.diaPagoMensual}
+                onChange={(e) => setFirma((f) => ({ ...f, diaPagoMensual: e.target.value }))}
+              >
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {firma.error && <p className="text-sm text-red-600 dark:text-red-400">{firma.error}</p>}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setFirma(null)}
+                disabled={firma.guardando}
+                className="rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={firma.guardando}
+                className="rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50 dark:hover:bg-[#ccc]"
+              >
+                {firma.guardando ? "Guardando…" : "Confirmar Firma y Activar"}
               </button>
             </div>
           </form>

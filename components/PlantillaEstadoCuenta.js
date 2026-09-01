@@ -1,4 +1,13 @@
 import { getConfiguracionPlantilla } from "@/app/actions/plantillas";
+import EncabezadoDualLogo from "@/components/EncabezadoDualLogo";
+
+/** Proyecto único si todos los contratos del cliente pertenecen al mismo proyecto; si hay más de uno, no se puede mostrar un solo logo de proyecto. */
+function proyectoUnico(contratos) {
+  const proyectos = contratos.map((c) => c.proyectos).filter(Boolean);
+  if (proyectos.length === 0) return null;
+  const idUnico = proyectos[0].id;
+  return proyectos.every((p) => p.id === idUnico) ? proyectos[0] : null;
+}
 
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -24,17 +33,7 @@ function HojaEstadoCuenta({ cliente, contratos, config, hojaRef }) {
   return (
     <div ref={hojaRef} className="flex w-[816px] flex-col bg-white p-10 text-black">
       <div className="flex items-center justify-between border-b-4 pb-4" style={{ borderColor: colorPrimario }}>
-        <div className="flex flex-col">
-          {config?.logo_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={config.logo_url} alt="Logo" className="h-10 w-auto object-contain" crossOrigin="anonymous" />
-          ) : (
-            <span className="text-3xl font-black tracking-tight">{config?.encabezado_linea1 || "DIPZ"}</span>
-          )}
-          <span className="text-[10px] font-semibold tracking-[0.2em] text-[#52525c]">
-            {config?.encabezado_linea2 || "THE FUTURE OF REAL ESTATE"}
-          </span>
-        </div>
+        <EncabezadoDualLogo configDipz={config} proyecto={proyectoUnico(contratos)} />
         <div className="flex flex-col items-end">
           <span className="text-lg font-bold uppercase tracking-wide">Estado de Cuenta Consolidado</span>
           <span className="text-xs text-[#52525c]">{formatoFecha(new Date().toISOString().slice(0, 10))}</span>

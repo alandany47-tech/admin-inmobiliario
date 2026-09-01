@@ -3,10 +3,18 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 
+const DIAS_SEPARACION = 30;
+
 function sumarMeses(fechaISO, n) {
   const d = new Date(`${fechaISO}T00:00:00`);
   d.setMonth(d.getMonth() + n);
   return d.toISOString().slice(0, 10);
+}
+
+function sumarDias(fechaISO, n) {
+  const d = new Date(`${fechaISO}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return d.toISOString();
 }
 
 /** Lista todos los contratos de venta, con proyecto/unidad/cliente, para el combobox de Captura de Pagos. */
@@ -15,7 +23,7 @@ export async function getContratosVenta() {
   const { data, error } = await supabase
     .from("contratos_venta")
     .select(
-      "id, monto_total_venta, fecha_contrato, estatus, proyectos(codigo, nombre), unidades(codigo_unidad), clientes(id, nombre, rfc)"
+      "id, monto_total_venta, fecha_contrato, estatus, esquema_venta, contrato_firmado, monto_enganche_pactado, monto_enganche_pagado, fecha_limite_apartado, dia_pago_mensual, proyectos(codigo, nombre, logo_proyecto_url, color_primario, color_secundario), unidades(codigo_unidad), clientes(id, nombre, rfc, email)"
     )
     .order("fecha_contrato", { ascending: false });
 
@@ -27,15 +35,25 @@ export async function getContratosVenta() {
   return data;
 }
 
-/** Crea el contrato de venta de una unidad y la marca como 'VENDIDA'. */
-export async function crearContratoVenta(payload) {
-  const { proyectoId, unidadId, clienteId, montoTotal, fechaContrato } = payload;
+/**
+ * Paso 1 del flujo comercial (Separación, 30 días): crea el contrato de
+ * venta con el monto de separación y el enganche pactado, deja
+ * `contrato_firmado = false` y fija `fecha_limite_apartado` a 30 días. La
+ * unidad pasa a 'APARTADA' (no 'VENDIDA' — eso ocurre hasta
+ * `confirmarFirmaContrato`). También registra la fila 'SEPARACION' del plan
+ * de pagos (queda 'Pendiente' hasta que se abone desde Captura de Pagos).
+ */
+export async function crearSeparacionUnidad(payload) {
+  const { proyectoId, unidadId, clienteId, montoTotal, esquemaVenta, montoSeparacion, montoEnganchePactado, fechaContrato } =
+    payload;
 
   if (!proyectoId || !unidadId || !clienteId || !(Number(montoTotal) > 0)) {
     return { error: "Captura proyecto, unidad, cliente y monto total de venta." };
   }
 
+  const fecha = fechaContrato || new Date().toISOString().slice(0, 10);
   const supabase = await createClient();
+
   const { data: contrato, error } = await supabase
     .from("contratos_venta")
     .insert({
@@ -43,7 +61,13 @@ export async function crearContratoVenta(payload) {
       unidad_id: unidadId,
       cliente_id: clienteId,
       monto_total_venta: Number(montoTotal),
-      fecha_contrato: fechaContrato || new Date().toISOString().slice(0, 10),
+      fecha_contrato: fecha,
+      esquema_venta: esquemaVenta === "INVERSIONISTA" ? "INVERSIONISTA" : "TRADICIONAL",
+      fecha_separacion: new Date().toISOString(),
+      fecha_limite_apartado: sumarDias(fecha, DIAS_SEPARACION),
+      monto_separacion: Number(montoSeparacion) || 0,
+      monto_enganche_pactado: Number(montoEnganchePactado) || 0,
+      contrato_firmado: false,
     })
     .select()
     .single();
@@ -52,9 +76,21 @@ export async function crearContratoVenta(payload) {
     return { error: `No se pudo crear el contrato: ${error.message}` };
   }
 
+  if (Number(montoSeparacion) > 0) {
+    const { error: errorPlan } = await supabase.from("planes_pago_cobranza").insert({
+      contrato_id: contrato.id,
+      tipo_pago: "SEPARACION",
+      monto_programado: Number(montoSeparacion),
+      fecha_programada: fecha,
+    });
+    if (errorPlan) {
+      return { error: `El contrato se creó, pero no se pudo registrar la separación: ${errorPlan.message}` };
+    }
+  }
+
   const { error: errorUnidad } = await supabase
     .from("unidades")
-    .update({ estatus: "VENDIDA" })
+    .update({ estatus: "APARTADA" })
     .eq("id", unidadId);
 
   if (errorUnidad) {
@@ -72,6 +108,8 @@ export async function crearContratoVenta(payload) {
 /**
  * Genera las filas del plan de pagos (enganche, N mensualidades, entrega) de
  * un contrato. Cada concepto es opcional: se omite si no trae monto > 0.
+ * Todas nacen `fase_plan = 'PROYECTADO'` (default de columna): son supuestos
+ * hasta que `confirmarFirmaContrato` las active.
  */
 export async function generarPlanDePagos(contratoId, payload) {
   const {
@@ -128,6 +166,16 @@ export async function generarPlanDePagos(contratoId, payload) {
     return { error: `No se pudo generar el plan de pagos: ${error.message}` };
   }
 
+  // El monto de enganche pactado del contrato se sincroniza aquí (además de
+  // capturarse en crearSeparacionUnidad) por si el plan se generó con un
+  // monto de enganche distinto al capturado en el paso de separación.
+  if (Number(montoEnganche) > 0) {
+    await supabase
+      .from("contratos_venta")
+      .update({ monto_enganche_pactado: Number(montoEnganche) })
+      .eq("id", contratoId);
+  }
+
   revalidatePath("/cobranza/pagos");
   revalidatePath("/cobranza/clientes");
   return { ok: true };
@@ -153,7 +201,10 @@ export async function getPlanDePagos(contratoId) {
 /**
  * Dispersa el abono de una fila del plan de pagos: la función de Postgres
  * ingresa el movimiento en Tesorería, actualiza el saldo de la cuenta y el
- * monto_pagado/estatus de la fila de forma atómica.
+ * monto_pagado/estatus de la fila de forma atómica. Después (fuera del RPC
+ * de dinero, por la regla de no tocar procesar_pago_cobranza) sincroniza
+ * `contratos_venta.monto_enganche_pagado` si la fila pagada es 'ENGANCHE',
+ * para poder validar en `confirmarFirmaContrato` si ya se liquidó.
  */
 export async function procesarPagoCobranza(planPagoId, cuentaId, monto, fechaPago, metodoPago) {
   const supabase = await createClient();
@@ -169,6 +220,26 @@ export async function procesarPagoCobranza(planPagoId, cuentaId, monto, fechaPag
     return { error: `No se pudo procesar el abono: ${error.message}` };
   }
 
+  const { data: plan } = await supabase
+    .from("planes_pago_cobranza")
+    .select("contrato_id, tipo_pago")
+    .eq("id", planPagoId)
+    .single();
+
+  if (plan?.tipo_pago === "ENGANCHE") {
+    const { data: filasEnganche } = await supabase
+      .from("planes_pago_cobranza")
+      .select("monto_pagado")
+      .eq("contrato_id", plan.contrato_id)
+      .eq("tipo_pago", "ENGANCHE");
+
+    const totalPagado = (filasEnganche ?? []).reduce((s, f) => s + Number(f.monto_pagado), 0);
+    await supabase
+      .from("contratos_venta")
+      .update({ monto_enganche_pagado: totalPagado })
+      .eq("id", plan.contrato_id);
+  }
+
   revalidatePath("/cobranza/pagos");
   revalidatePath("/cobranza/clientes");
   revalidatePath("/tesoreria");
@@ -177,57 +248,108 @@ export async function procesarPagoCobranza(planPagoId, cuentaId, monto, fechaPag
 }
 
 /**
- * Cartera por cliente: venta acumulada, cobrado, saldo pendiente y días de
- * mora (máximo entre las filas Pendiente/Parcial con fecha_programada
- * vencida). Se agrega en JS a partir de un select anidado en vez de una vista
- * SQL nueva, mismo criterio que el árbol WBS (construirArbol en lib/wbs.js).
- * `proyectoId` (opcional) filtra a solo los clientes con al menos un
- * contrato ligado a una unidad de ese proyecto; el filtro se aplica en JS
- * sobre `unidades.proyecto_id`, mismo criterio de "agregar en el cliente" que
- * el resto de esta función.
+ * Paso 2 del flujo comercial (Liquidación de Enganche y Firma): valida que
+ * el enganche pactado ya esté liquidado y que el contrato no esté firmado
+ * todavía, define el día de pago mensual definitivo, activa el plan de
+ * pagos completo (`fase_plan` PROYECTADO -> ACTIVO) y marca la unidad
+ * 'VENDIDA'.
+ */
+export async function confirmarFirmaContrato(contratoId, diaPagoMensual) {
+  const dia = Number(diaPagoMensual);
+  if (!Number.isInteger(dia) || dia < 1 || dia > 31) {
+    return { error: "Captura un día de pago mensual válido (1 a 31)." };
+  }
+
+  const supabase = await createClient();
+  const { data: contrato, error: errorContrato } = await supabase
+    .from("contratos_venta")
+    .select("id, unidad_id, contrato_firmado, monto_enganche_pactado, monto_enganche_pagado")
+    .eq("id", contratoId)
+    .single();
+
+  if (errorContrato || !contrato) {
+    return { error: "No se encontró el contrato." };
+  }
+  if (contrato.contrato_firmado) {
+    return { error: "Este contrato ya está firmado." };
+  }
+  if (Number(contrato.monto_enganche_pagado) < Number(contrato.monto_enganche_pactado)) {
+    return { error: "El enganche pactado todavía no se liquida por completo." };
+  }
+
+  const { error: errorFirma } = await supabase
+    .from("contratos_venta")
+    .update({ contrato_firmado: true, dia_pago_mensual: dia })
+    .eq("id", contratoId);
+  if (errorFirma) {
+    return { error: `No se pudo confirmar la firma: ${errorFirma.message}` };
+  }
+
+  const { error: errorPlan } = await supabase
+    .from("planes_pago_cobranza")
+    .update({ fase_plan: "ACTIVO" })
+    .eq("contrato_id", contratoId);
+  if (errorPlan) {
+    return { error: `La firma se confirmó, pero no se pudo activar el plan de pagos: ${errorPlan.message}` };
+  }
+
+  const { error: errorUnidad } = await supabase
+    .from("unidades")
+    .update({ estatus: "VENDIDA" })
+    .eq("id", contrato.unidad_id);
+  if (errorUnidad) {
+    return { error: `La firma se confirmó, pero no se pudo actualizar la unidad: ${errorUnidad.message}` };
+  }
+
+  revalidatePath("/unidades");
+  revalidatePath("/cobranza/clientes");
+  revalidatePath("/cobranza/pagos");
+  return { ok: true };
+}
+
+/**
+ * Cartera por cliente: venta acumulada, cobrado, saldo pendiente, días de
+ * mora y estatus de separación/firma, agregados en JS a partir de
+ * `vista_cartera_clientes` (un renglón por contrato, con saldos/mora/avance
+ * de enganche ya calculados en SQL). `proyectoId` (opcional) filtra a solo
+ * los clientes con al menos un contrato en ese proyecto.
  */
 export async function getCarteraClientes(proyectoId) {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data: clientes, error: errorClientes } = await supabase
     .from("clientes")
-    .select(
-      "id, nombre, rfc, telefono, email, direccion, contacto_secundario, notas, contratos_venta(id, monto_total_venta, estatus, unidades(proyecto_id, codigo_unidad), planes_pago_cobranza(monto_programado, monto_pagado, fecha_programada, estatus))"
-    )
+    .select("id, nombre, rfc, telefono, email, direccion, contacto_secundario, notas")
     .order("nombre", { ascending: true });
 
-  if (error) {
-    console.error("Error al consultar la cartera de clientes:", error.message);
+  if (errorClientes) {
+    console.error("Error al consultar clientes:", errorClientes.message);
     return [];
   }
 
-  const hoy = new Date().toISOString().slice(0, 10);
+  let query = supabase.from("vista_cartera_clientes").select("*");
+  if (proyectoId) query = query.eq("proyecto_id", proyectoId);
+  const { data: contratos, error: errorContratos } = await query;
 
-  return data
-    .map((cliente) => ({
-      ...cliente,
-      contratos_venta: proyectoId
-        ? (cliente.contratos_venta ?? []).filter((c) => c.unidades?.proyecto_id === proyectoId)
-        : cliente.contratos_venta ?? [],
-    }))
-    // Sin filtro de proyecto se listan todos los clientes (es el directorio
-    // completo, incluye a quien todavía no tiene ninguna unidad asignada);
-    // con filtro de proyecto solo los que sí tienen contrato en ese proyecto.
-    .filter((cliente) => !proyectoId || cliente.contratos_venta.length > 0)
+  if (errorContratos) {
+    console.error("Error al consultar la cartera de clientes:", errorContratos.message);
+    return [];
+  }
+
+  const contratosPorCliente = new Map();
+  (contratos ?? []).forEach((c) => {
+    if (!contratosPorCliente.has(c.cliente_id)) contratosPorCliente.set(c.cliente_id, []);
+    contratosPorCliente.get(c.cliente_id).push(c);
+  });
+
+  return clientes
+    .map((cliente) => ({ ...cliente, contratos: contratosPorCliente.get(cliente.id) ?? [] }))
+    .filter((cliente) => !proyectoId || cliente.contratos.length > 0)
     .map((cliente) => {
-      const contratos = cliente.contratos_venta;
+      const contratos = cliente.contratos;
       const ventaTotal = contratos.reduce((s, c) => s + Number(c.monto_total_venta), 0);
-      let cobrado = 0;
-      let diasMora = 0;
-
-      contratos.forEach((c) => {
-        (c.planes_pago_cobranza ?? []).forEach((p) => {
-          cobrado += Number(p.monto_pagado);
-          if (["Pendiente", "Parcial"].includes(p.estatus) && p.fecha_programada < hoy) {
-            const dias = Math.floor((new Date(hoy) - new Date(p.fecha_programada)) / 86400000);
-            diasMora = Math.max(diasMora, dias);
-          }
-        });
-      });
+      const cobrado = contratos.reduce((s, c) => s + Number(c.total_pagado), 0);
+      const diasMora = contratos.reduce((max, c) => Math.max(max, Number(c.dias_mora) || 0), 0);
+      const apartadaPorVencer = contratos.find((c) => !c.contrato_firmado && c.dias_restantes_separacion != null);
 
       return {
         id: cliente.id,
@@ -243,15 +365,21 @@ export async function getCarteraClientes(proyectoId) {
         cobrado,
         saldoPendiente: ventaTotal - cobrado,
         diasMora,
+        estadoSeparacion: apartadaPorVencer
+          ? { diasRestantes: apartadaPorVencer.dias_restantes_separacion, codigoUnidad: apartadaPorVencer.codigo_unidad }
+          : null,
       };
     });
 }
 
 /**
- * Alertas de vencimiento: filas del plan de pagos Pendientes/Parciales cuya
- * fecha programada cae dentro de los próximos 30 días (incluye ya vencidas,
- * con diasRestantes negativo), agrupadas en los buckets 7/15/30 días por el
- * caller. `proyectoId` (opcional) filtra por unidad.
+ * Alertas de vencimiento: dos tipos de renglón alimentan los mismos buckets
+ * 7/15/30 días. 'PAGO': filas del plan de pagos Pendientes/Parciales con
+ * `fase_plan = 'ACTIVO'` (mensualidades ya confirmadas, no proyecciones)
+ * cuya fecha programada cae dentro de los próximos 30 días (incluye ya
+ * vencidas, con diasRestantes negativo). 'APARTADO': contratos sin firmar
+ * cuya `fecha_limite_apartado` está por vencer. `proyectoId` (opcional)
+ * filtra por unidad/proyecto.
  */
 export async function getAlertasVencimiento(proyectoId) {
   const supabase = await createClient();
@@ -260,28 +388,38 @@ export async function getAlertasVencimiento(proyectoId) {
   limite.setDate(limite.getDate() + 30);
   const limiteISO = limite.toISOString().slice(0, 10);
 
-  let query = supabase
+  let queryPagos = supabase
     .from("planes_pago_cobranza")
     .select(
       "id, tipo_pago, monto_programado, monto_pagado, fecha_programada, estatus, contratos_venta!inner(id, proyecto_id, clientes(id, nombre), unidades(codigo_unidad, proyecto_id), proyectos(codigo, nombre))"
     )
     .in("estatus", ["Pendiente", "Parcial"])
+    .eq("fase_plan", "ACTIVO")
     .lte("fecha_programada", limiteISO)
     .order("fecha_programada", { ascending: true });
 
-  if (proyectoId) {
-    query = query.eq("contratos_venta.proyecto_id", proyectoId);
-  }
+  if (proyectoId) queryPagos = queryPagos.eq("contratos_venta.proyecto_id", proyectoId);
 
-  const { data, error } = await query;
+  let queryApartados = supabase
+    .from("contratos_venta")
+    .select("id, fecha_limite_apartado, clientes(id, nombre), unidades(codigo_unidad, proyecto_id), proyectos(codigo, nombre)")
+    .eq("contrato_firmado", false)
+    .eq("estatus", "Activo")
+    .lte("fecha_limite_apartado", limite.toISOString());
 
-  if (error) {
-    console.error("Error al consultar alertas de vencimiento:", error.message);
-    return [];
-  }
+  if (proyectoId) queryApartados = queryApartados.eq("proyecto_id", proyectoId);
 
-  return data.map((p) => ({
+  const [{ data: pagos, error: errorPagos }, { data: apartados, error: errorApartados }] = await Promise.all([
+    queryPagos,
+    queryApartados,
+  ]);
+
+  if (errorPagos) console.error("Error al consultar alertas de pago:", errorPagos.message);
+  if (errorApartados) console.error("Error al consultar alertas de separación:", errorApartados.message);
+
+  const alertasPago = (pagos ?? []).map((p) => ({
     id: p.id,
+    tipo: "PAGO",
     tipoPago: p.tipo_pago,
     saldo: Number(p.monto_programado) - Number(p.monto_pagado),
     fechaProgramada: p.fecha_programada,
@@ -290,6 +428,20 @@ export async function getAlertasVencimiento(proyectoId) {
     unidadCodigo: p.contratos_venta?.unidades?.codigo_unidad ?? "",
     proyectoCodigo: p.contratos_venta?.proyectos?.codigo ?? "",
   }));
+
+  const alertasApartado = (apartados ?? []).map((c) => ({
+    id: `apartado-${c.id}`,
+    tipo: "APARTADO",
+    tipoPago: "Vence separación",
+    saldo: null,
+    fechaProgramada: c.fecha_limite_apartado.slice(0, 10),
+    diasRestantes: Math.floor((new Date(c.fecha_limite_apartado) - new Date(hoy)) / 86400000),
+    clienteNombre: c.clientes?.nombre ?? "",
+    unidadCodigo: c.unidades?.codigo_unidad ?? "",
+    proyectoCodigo: c.proyectos?.codigo ?? "",
+  }));
+
+  return [...alertasPago, ...alertasApartado].sort((a, b) => a.diasRestantes - b.diasRestantes);
 }
 
 /** Desglose de todas las filas del plan de pagos de un cliente, a través de todos sus contratos. */
@@ -298,7 +450,7 @@ export async function getDesglosePagosCliente(clienteId) {
   const { data, error } = await supabase
     .from("contratos_venta")
     .select(
-      "id, monto_total_venta, fecha_contrato, unidades(codigo_unidad), planes_pago_cobranza(id, tipo_pago, monto_programado, monto_pagado, fecha_programada, fecha_pago, estatus, notas)"
+      "id, monto_total_venta, fecha_contrato, esquema_venta, contrato_firmado, unidades(codigo_unidad), proyectos(id, codigo, nombre, logo_proyecto_url, color_primario, color_secundario), planes_pago_cobranza(id, tipo_pago, monto_programado, monto_pagado, fecha_programada, fecha_pago, estatus, fase_plan, notas)"
     )
     .eq("cliente_id", clienteId)
     .order("fecha_contrato", { ascending: false });

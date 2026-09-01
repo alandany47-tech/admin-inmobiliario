@@ -5,7 +5,7 @@ import { Eye, Home, Pencil, Search, Upload } from "lucide-react";
 import { getCarteraClientes } from "@/app/actions/cobranza";
 import ModalDesglosePagosCliente from "@/components/ModalDesglosePagosCliente";
 import ModalEditarCliente from "@/components/ModalEditarCliente";
-import ModalAsignarUnidad from "@/components/ModalAsignarUnidad";
+import ModalWizardSeparacion from "@/components/ModalWizardSeparacion";
 import ModalImportarClientes from "@/components/ModalImportarClientes";
 
 function formatoMXN(valor) {
@@ -120,6 +120,7 @@ export default function CarteraClientes({ clientes: clientesIniciales, proyectos
                 <th className="px-4 py-3 text-right">Cobrado</th>
                 <th className="px-4 py-3 text-right">Saldo Pendiente</th>
                 <th className="px-4 py-3 text-right">Días de Mora</th>
+                <th className="px-4 py-3">Estatus</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -147,6 +148,28 @@ export default function CarteraClientes({ clientes: clientesIniciales, proyectos
                       </span>
                     ) : (
                       <span className="text-zinc-400 dark:text-zinc-600">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {c.estadoSeparacion ? (
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          c.estadoSeparacion.diasRestantes <= 0
+                            ? "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400"
+                            : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400"
+                        }`}
+                      >
+                        Apartada {c.estadoSeparacion.codigoUnidad}
+                        {c.estadoSeparacion.diasRestantes <= 0
+                          ? " (vencida)"
+                          : ` (${c.estadoSeparacion.diasRestantes}d)`}
+                      </span>
+                    ) : c.cantidadContratos > 0 ? (
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-400">
+                        Vendida / Firmado
+                      </span>
+                    ) : (
+                      <span className="text-zinc-400 dark:text-zinc-600">Sin unidad</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -217,10 +240,11 @@ export default function CarteraClientes({ clientes: clientesIniciales, proyectos
       )}
 
       {asignando && (
-        <ModalAsignarUnidad
-          cliente={asignando}
+        <ModalWizardSeparacion
           proyectos={proyectos}
-          onAsignado={() => {
+          clientes={clientes}
+          clientePreset={asignando}
+          onCompletado={() => {
             setAsignando(null);
             recargar();
           }}

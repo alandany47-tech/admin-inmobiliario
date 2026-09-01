@@ -11,7 +11,7 @@ export async function getSolicitudesPorAutorizar() {
   const { data, error } = await supabase
     .from("solicitudes_pago")
     .select(
-      "id, folio, created_at, metodo_pago, total, solicitante, proyectos(codigo, nombre), proveedores(razon_social)"
+      "id, folio, created_at, metodo_pago, total, solicitante, proyecto_id, proyectos(codigo, nombre, logo_proyecto_url, color_primario, color_secundario), proveedores(razon_social)"
     )
     .eq("estado", "Por Autorizar")
     .order("created_at", { ascending: true });

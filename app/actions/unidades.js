@@ -5,14 +5,21 @@ import { createClient } from "@/lib/supabase/server";
 
 const TIPOS_USO_VALIDOS = ["DEPARTAMENTO", "OFICINA", "LOCAL", "BODEGA", "OTRO"];
 const ESTATUS_VALIDOS = ["SIN ASIGNAR", "APARTADA", "VENDIDA"];
+const ESQUEMAS_VALIDOS = ["TRADICIONAL", "INVERSIONISTA"];
 
-/** Lista las unidades de un proyecto. */
+/**
+ * Lista las unidades de un proyecto, con el contrato de venta 'Activo' (si
+ * existe) para poder mostrar el countdown de separación y el estatus de
+ * firma directamente en la tarjeta, sin queries adicionales por unidad.
+ */
 export async function getUnidades(proyectoId) {
   if (!proyectoId) return [];
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("unidades")
-    .select("*")
+    .select(
+      "*, contratos_venta(id, fecha_limite_apartado, contrato_firmado, esquema_venta, monto_enganche_pactado, monto_enganche_pagado, estatus)"
+    )
     .eq("proyecto_id", proyectoId)
     .order("codigo_unidad", { ascending: true });
 
@@ -21,7 +28,10 @@ export async function getUnidades(proyectoId) {
     return [];
   }
 
-  return data;
+  return data.map((u) => ({
+    ...u,
+    contrato_activo: (u.contratos_venta ?? []).find((c) => c.estatus === "Activo") ?? null,
+  }));
 }
 
 /** Unidades 'SIN ASIGNAR' de un proyecto, para el flujo de asignación directa desde Cartera de Clientes. */
@@ -45,7 +55,7 @@ export async function getUnidadesDisponibles(proyectoId) {
 
 /** Crea una unidad de inventario para un proyecto. */
 export async function crearUnidad(payload) {
-  const { proyectoId, codigoUnidad, superficieM2, tipoUso, montoLista, precioM2 } = payload;
+  const { proyectoId, codigoUnidad, superficieM2, tipoUso, montoLista, precioM2, esquemaUnidad } = payload;
 
   if (!proyectoId || !codigoUnidad?.trim()) {
     return { error: "Captura proyecto y código de unidad." };
@@ -61,6 +71,7 @@ export async function crearUnidad(payload) {
       tipo_uso: TIPOS_USO_VALIDOS.includes(tipoUso) ? tipoUso : "DEPARTAMENTO",
       monto_lista: Number(montoLista) || 0,
       precio_m2: Number(precioM2) || 0,
+      esquema_unidad: ESQUEMAS_VALIDOS.includes(esquemaUnidad) ? esquemaUnidad : "TRADICIONAL",
     })
     .select()
     .single();
@@ -78,7 +89,7 @@ export async function crearUnidad(payload) {
 
 /** Actualiza specs de una unidad (código, superficie, tipo de uso, precio/m² y monto de lista). */
 export async function actualizarUnidad(id, payload) {
-  const { codigoUnidad, superficieM2, tipoUso, montoLista, precioM2 } = payload;
+  const { codigoUnidad, superficieM2, tipoUso, montoLista, precioM2, esquemaUnidad } = payload;
 
   if (!codigoUnidad?.trim()) {
     return { error: "Captura el código de unidad." };
@@ -93,6 +104,7 @@ export async function actualizarUnidad(id, payload) {
       tipo_uso: TIPOS_USO_VALIDOS.includes(tipoUso) ? tipoUso : "DEPARTAMENTO",
       monto_lista: Number(montoLista) || 0,
       precio_m2: Number(precioM2) || 0,
+      esquema_unidad: ESQUEMAS_VALIDOS.includes(esquemaUnidad) ? esquemaUnidad : "TRADICIONAL",
     })
     .eq("id", id)
     .select()
@@ -186,6 +198,9 @@ export async function importarUnidadesMasivo(proyectoId, filas) {
     const estatus = ESTATUS_VALIDOS.includes(String(fila.estatus ?? "").toUpperCase())
       ? String(fila.estatus).toUpperCase()
       : "SIN ASIGNAR";
+    const esquemaUnidad = ESQUEMAS_VALIDOS.includes(String(fila.esquema ?? "").toUpperCase())
+      ? String(fila.esquema).toUpperCase()
+      : "TRADICIONAL";
 
     registros.push({
       proyecto_id: proyectoId,
@@ -195,6 +210,7 @@ export async function importarUnidadesMasivo(proyectoId, filas) {
       precio_m2: precioM2,
       monto_lista: montoLista,
       estatus,
+      esquema_unidad: esquemaUnidad,
     });
   });
 
@@ -214,4 +230,68 @@ export async function importarUnidadesMasivo(proyectoId, filas) {
 
   revalidatePath("/unidades");
   return { ok: true, importadas: data.length, invalidas };
+}
+
+/**
+ * Libera una unidad 'APARTADA' cuyos 30 días de separación ya vencieron sin
+ * liquidar el enganche ni firmar contrato: cancela el contrato de venta
+ * asociado (no lo borra, queda como historial) y regresa la unidad a
+ * 'SIN ASIGNAR'.
+ */
+export async function liberarUnidadVencida(unidadId) {
+  const supabase = await createClient();
+
+  const { data: unidad, error: errorUnidad } = await supabase
+    .from("unidades")
+    .select("id, estatus")
+    .eq("id", unidadId)
+    .single();
+
+  if (errorUnidad || !unidad) {
+    return { error: "No se encontró la unidad." };
+  }
+  if (unidad.estatus !== "APARTADA") {
+    return { error: "Solo se pueden liberar unidades en estatus 'APARTADA'." };
+  }
+
+  const { data: contrato, error: errorContrato } = await supabase
+    .from("contratos_venta")
+    .select("id, contrato_firmado, fecha_limite_apartado")
+    .eq("unidad_id", unidadId)
+    .eq("estatus", "Activo")
+    .maybeSingle();
+
+  if (errorContrato) {
+    return { error: `No se pudo validar el contrato: ${errorContrato.message}` };
+  }
+  if (!contrato) {
+    return { error: "Esta unidad no tiene un contrato de separación activo." };
+  }
+  if (contrato.contrato_firmado) {
+    return { error: "No se puede liberar: el contrato ya está firmado." };
+  }
+  if (new Date(contrato.fecha_limite_apartado) > new Date()) {
+    return { error: "Todavía no vencen los 30 días de separación." };
+  }
+
+  const { error: errorCancelar } = await supabase
+    .from("contratos_venta")
+    .update({ estatus: "Cancelado" })
+    .eq("id", contrato.id);
+  if (errorCancelar) {
+    return { error: `No se pudo cancelar el contrato: ${errorCancelar.message}` };
+  }
+
+  const { error: errorLiberar } = await supabase
+    .from("unidades")
+    .update({ estatus: "SIN ASIGNAR" })
+    .eq("id", unidadId);
+  if (errorLiberar) {
+    return { error: `No se pudo liberar la unidad: ${errorLiberar.message}` };
+  }
+
+  revalidatePath("/unidades");
+  revalidatePath("/cobranza/clientes");
+  revalidatePath("/cobranza/pagos");
+  return { ok: true };
 }

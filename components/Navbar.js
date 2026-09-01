@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import {
   Building2,
+  Calculator,
   FileText,
   HandCoins,
   Home,
@@ -27,6 +28,7 @@ const ENLACES = [
   { href: "/dashboard", label: "Dashboard", icon: TrendingUp },
   { href: "/proyectos", label: "Proyectos", icon: Building2 },
   { href: "/unidades", label: "Unidades", icon: Home },
+  { href: "/cotizaciones", label: "Cotizador", icon: Calculator },
   { href: "/solicitud", label: "Solicitudes", icon: FileText },
   { href: "/autorizaciones", label: "Autorizaciones", icon: ShieldCheck },
   { href: "/tesoreria", label: "Tesorería", icon: Landmark },

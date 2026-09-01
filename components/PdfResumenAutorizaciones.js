@@ -1,4 +1,12 @@
 import { getConfiguracionPlantilla } from "@/app/actions/plantillas";
+import EncabezadoDualLogo from "@/components/EncabezadoDualLogo";
+
+/** Proyecto único si todas las solicitudes filtradas pertenecen al mismo proyecto; si abarca varios, no hay un solo logo de proyecto que mostrar. */
+function proyectoUnico(solicitudes) {
+  const idsUnicos = new Set(solicitudes.map((s) => s.proyecto_id).filter((id) => id != null));
+  if (idsUnicos.size !== 1) return null;
+  return solicitudes.find((s) => s.proyectos)?.proyectos ?? null;
+}
 
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -36,17 +44,7 @@ function HojaResumen({ solicitudes, config, hojaRef }) {
   return (
     <div ref={hojaRef} className="flex w-[816px] flex-col bg-white p-10 text-black">
       <div className="flex items-center justify-between border-b-4 pb-4" style={{ borderColor: colorPrimario }}>
-        <div className="flex flex-col">
-          {config?.logo_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={config.logo_url} alt="Logo" className="h-10 w-auto object-contain" crossOrigin="anonymous" />
-          ) : (
-            <span className="text-3xl font-black tracking-tight">{config?.encabezado_linea1 || "DIPZ"}</span>
-          )}
-          <span className="text-[10px] font-semibold tracking-[0.2em] text-[#52525c]">
-            {config?.encabezado_linea2 || "THE FUTURE OF REAL ESTATE"}
-          </span>
-        </div>
+        <EncabezadoDualLogo configDipz={config} proyecto={proyectoUnico(solicitudes)} />
         <div className="flex flex-col items-end">
           <span className="text-lg font-bold uppercase tracking-wide">Resumen de Autorizaciones</span>
           <span className="text-xs text-[#52525c]">{formatoFecha(new Date())}</span>

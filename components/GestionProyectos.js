@@ -4,7 +4,21 @@ import { useState } from "react";
 import { Pencil, Plus, Trash2, X } from "lucide-react";
 import { crearProyecto, actualizarProyecto, eliminarProyecto } from "@/app/actions/proyectos";
 
-const FORM_VACIO = { codigo: "", nombre: "", presupuesto: "" };
+const FORM_VACIO = {
+  codigo: "",
+  nombre: "",
+  presupuesto: "",
+  logoProyectoUrl: "",
+  colorPrimario: "#0f172a",
+  colorSecundario: "#2563eb",
+  estatus: "En Desarrollo",
+};
+const ESTATUS_PROYECTO = ["En Desarrollo", "Concluido", "Archivado"];
+const BADGE_ESTATUS_PROYECTO = {
+  "En Desarrollo": "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400",
+  Concluido: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400",
+  Archivado: "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
+};
 
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -31,7 +45,15 @@ export default function GestionProyectos({ proyectosIniciales }) {
 
   function abrirEdicion(p) {
     setModal(p);
-    setForm({ codigo: p.codigo, nombre: p.nombre, presupuesto: String(p.presupuesto) });
+    setForm({
+      codigo: p.codigo,
+      nombre: p.nombre,
+      presupuesto: String(p.presupuesto),
+      logoProyectoUrl: p.logoProyectoUrl ?? "",
+      colorPrimario: p.colorPrimario ?? "#0f172a",
+      colorSecundario: p.colorSecundario ?? "#2563eb",
+      estatus: p.estatus ?? "En Desarrollo",
+    });
     setError("");
   }
 
@@ -71,13 +93,26 @@ export default function GestionProyectos({ proyectosIniciales }) {
           presupuesto: Number(resultado.proyecto.presupuesto),
           totalPagado: 0,
           totalPartidasWbs: 0,
+          logoProyectoUrl: resultado.proyecto.logo_proyecto_url,
+          colorPrimario: resultado.proyecto.color_primario,
+          colorSecundario: resultado.proyecto.color_secundario,
+          estatus: resultado.proyecto.estatus,
         },
       ]);
     } else {
       setProyectos((filas) =>
         filas.map((f) =>
           f.id === modal.id
-            ? { ...f, codigo: form.codigo.trim().toUpperCase(), nombre: form.nombre.trim(), presupuesto: Number(form.presupuesto) }
+            ? {
+                ...f,
+                codigo: form.codigo.trim().toUpperCase(),
+                nombre: form.nombre.trim(),
+                presupuesto: Number(form.presupuesto),
+                logoProyectoUrl: form.logoProyectoUrl?.trim() || null,
+                colorPrimario: form.colorPrimario,
+                colorSecundario: form.colorSecundario,
+                estatus: form.estatus,
+              }
             : f
         )
       );
@@ -133,6 +168,7 @@ export default function GestionProyectos({ proyectosIniciales }) {
                 <th className="px-4 py-3 text-right">Total Pagado</th>
                 <th className="px-4 py-3 text-right">Disponible</th>
                 <th className="px-4 py-3 text-right">Partidas WBS</th>
+                <th className="px-4 py-3">Estatus</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -156,6 +192,15 @@ export default function GestionProyectos({ proyectosIniciales }) {
                       {formatoMXN(disponible)}
                     </td>
                     <td className="px-4 py-2.5 text-right">{p.totalPartidasWbs}</td>
+                    <td className="px-4 py-2.5">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          BADGE_ESTATUS_PROYECTO[p.estatus] ?? ""
+                        }`}
+                      >
+                        {p.estatus}
+                      </span>
+                    </td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center justify-end gap-3">
                         <button
@@ -233,6 +278,69 @@ export default function GestionProyectos({ proyectosIniciales }) {
                 value={form.presupuesto}
                 onChange={(e) => actualizarCampo("presupuesto", e.target.value)}
               />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClase}>Logo del Proyecto (URL)</label>
+              <input
+                type="text"
+                placeholder="https://…"
+                className={inputClase}
+                value={form.logoProyectoUrl}
+                onChange={(e) => actualizarCampo("logoProyectoUrl", e.target.value)}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className={labelClase}>Color Primario</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    className="h-9 w-12 rounded border border-black/[.08] bg-transparent dark:border-white/[.145]"
+                    value={/^#[0-9a-fA-F]{6}$/.test(form.colorPrimario) ? form.colorPrimario : "#0f172a"}
+                    onChange={(e) => actualizarCampo("colorPrimario", e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    className={`${inputClase} flex-1`}
+                    value={form.colorPrimario}
+                    onChange={(e) => actualizarCampo("colorPrimario", e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className={labelClase}>Color Secundario</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    className="h-9 w-12 rounded border border-black/[.08] bg-transparent dark:border-white/[.145]"
+                    value={/^#[0-9a-fA-F]{6}$/.test(form.colorSecundario) ? form.colorSecundario : "#2563eb"}
+                    onChange={(e) => actualizarCampo("colorSecundario", e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    className={`${inputClase} flex-1`}
+                    value={form.colorSecundario}
+                    onChange={(e) => actualizarCampo("colorSecundario", e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClase}>Estatus</label>
+              <select
+                className={inputClase}
+                value={form.estatus}
+                onChange={(e) => actualizarCampo("estatus", e.target.value)}
+              >
+                {ESTATUS_PROYECTO.map((es) => (
+                  <option key={es} value={es}>
+                    {es}
+                  </option>
+                ))}
+              </select>
             </div>
 
             {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
