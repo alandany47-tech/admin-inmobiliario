@@ -33,6 +33,29 @@ export async function iniciarSesion(formData) {
   redirect("/dashboard");
 }
 
+/** Cambia la contraseña del usuario autenticado y apaga el flag de cambio obligatorio. */
+export async function cambiarPassword(formData) {
+  const nueva = formData.get("password")?.toString() ?? "";
+  const confirmacion = formData.get("confirmar")?.toString() ?? "";
+
+  if (nueva.length < 8) {
+    return { error: "La contraseña debe tener al menos 8 caracteres." };
+  }
+  if (nueva !== confirmacion) {
+    return { error: "Las contraseñas no coinciden." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.updateUser({ password: nueva });
+
+  if (error) {
+    return { error: `No se pudo actualizar la contraseña: ${error.message}` };
+  }
+
+  await supabase.rpc("marcar_password_cambiada");
+  redirect("/dashboard");
+}
+
 /** Cierra la sesión actual y redirige al login. */
 export async function cerrarSesion() {
   const supabase = await createClient();
@@ -74,8 +97,8 @@ export async function getPerfiles() {
   return data;
 }
 
-/** Invita a un usuario nuevo por correo (solo ADMIN; usa la service role key, RLS no aplica). */
-export async function invitarUsuario(formData) {
+/** Crea un usuario nuevo con contraseña temporal definida por un ADMIN (solo ADMIN; usa la service role key, RLS no aplica). */
+export async function crearUsuario(formData) {
   const perfilActual = await getPerfilActual();
   if (!perfilActual || perfilActual.rol !== "ADMIN") {
     return { error: "No autorizado." };
@@ -83,9 +106,13 @@ export async function invitarUsuario(formData) {
 
   const email = formData.get("email")?.toString().trim();
   const nombre = formData.get("nombre")?.toString().trim();
+  const password = formData.get("password")?.toString() ?? "";
 
   if (!email) {
     return { error: "El correo es obligatorio." };
+  }
+  if (password.length < 8) {
+    return { error: "La contraseña temporal debe tener al menos 8 caracteres." };
   }
 
   let admin;
@@ -95,12 +122,15 @@ export async function invitarUsuario(formData) {
     return { error: e.message };
   }
 
-  const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-    data: nombre ? { full_name: nombre } : undefined,
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: nombre ? { full_name: nombre } : undefined,
   });
 
   if (error) {
-    return { error: `No se pudo invitar al usuario: ${error.message}` };
+    return { error: `No se pudo crear el usuario: ${error.message}` };
   }
 
   const { data: perfil } = await admin
