@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Search, CheckCircle2 } from "lucide-react";
-import { actualizarRolUsuario, actualizarEstatusUsuario } from "@/app/actions/auth";
+import { useRef, useState } from "react";
+import { Search, CheckCircle2, UserPlus, Loader2 } from "lucide-react";
+import { actualizarRolUsuario, actualizarEstatusUsuario, invitarUsuario } from "@/app/actions/auth";
 
 const NOMBRES_ROL = {
   SOLICITANTE: "Solicitante",
@@ -18,10 +18,33 @@ export default function PanelPermisos({ perfiles: perfilesIniciales, perfilActua
   const [guardandoId, setGuardandoId] = useState(null);
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
+  const [invitando, setInvitando] = useState(false);
+  const [errorInvitar, setErrorInvitar] = useState("");
+  const formInvitarRef = useRef(null);
 
   function notificar(msg) {
     setMensaje(msg);
     setTimeout(() => setMensaje(""), 3000);
+  }
+
+  async function invitar(e) {
+    e.preventDefault();
+    setErrorInvitar("");
+    setInvitando(true);
+
+    const resultado = await invitarUsuario(new FormData(e.target));
+    setInvitando(false);
+
+    if (resultado.error) {
+      setErrorInvitar(resultado.error);
+      return;
+    }
+
+    if (resultado.perfil) {
+      setPerfiles((filas) => [...filas, resultado.perfil].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    }
+    formInvitarRef.current?.reset();
+    notificar("Usuario invitado correctamente");
   }
 
   async function cambiarRol(id, rol) {
@@ -61,7 +84,52 @@ export default function PanelPermisos({ perfiles: perfilesIniciales, perfilActua
   );
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
+      <form
+        ref={formInvitarRef}
+        onSubmit={invitar}
+        className="flex flex-col gap-4 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-900"
+      >
+        <h3 className="flex items-center gap-2 text-base font-semibold text-black dark:text-zinc-50">
+          <UserPlus size={17} /> Invitar Usuario
+        </h3>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Nombre</label>
+            <input
+              type="text"
+              name="nombre"
+              placeholder="Nombre completo"
+              className="rounded-lg border border-black/[.08] bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.145] dark:focus:border-zinc-600"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Correo Electrónico</label>
+            <input
+              type="email"
+              name="email"
+              required
+              placeholder="usuario@dipz.mx"
+              className="rounded-lg border border-black/[.08] bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-400 dark:border-white/[.145] dark:focus:border-zinc-600"
+            />
+          </div>
+        </div>
+
+        {errorInvitar && <p className="text-sm text-red-600 dark:text-red-400">{errorInvitar}</p>}
+
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={invitando}
+            className="flex items-center gap-2 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50 dark:hover:bg-[#ccc]"
+          >
+            {invitando ? <Loader2 size={15} className="animate-spin" /> : <UserPlus size={15} />}
+            {invitando ? "Invitando…" : "Invitar Usuario"}
+          </button>
+        </div>
+      </form>
+
       <div className="flex items-center justify-between gap-4">
         <div className="relative max-w-xs flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />

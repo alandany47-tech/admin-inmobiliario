@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const ROLES_VALIDOS = ["SOLICITANTE", "APROBADOR", "TESORERIA", "ADMIN"];
 
@@ -71,6 +72,45 @@ export async function getPerfiles() {
   }
 
   return data;
+}
+
+/** Invita a un usuario nuevo por correo (solo ADMIN; usa la service role key, RLS no aplica). */
+export async function invitarUsuario(formData) {
+  const perfilActual = await getPerfilActual();
+  if (!perfilActual || perfilActual.rol !== "ADMIN") {
+    return { error: "No autorizado." };
+  }
+
+  const email = formData.get("email")?.toString().trim();
+  const nombre = formData.get("nombre")?.toString().trim();
+
+  if (!email) {
+    return { error: "El correo es obligatorio." };
+  }
+
+  let admin;
+  try {
+    admin = createAdminClient();
+  } catch (e) {
+    return { error: e.message };
+  }
+
+  const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
+    data: nombre ? { full_name: nombre } : undefined,
+  });
+
+  if (error) {
+    return { error: `No se pudo invitar al usuario: ${error.message}` };
+  }
+
+  const { data: perfil } = await admin
+    .from("perfiles_usuario")
+    .select("*")
+    .eq("id", data.user.id)
+    .single();
+
+  revalidatePath("/configuracion/permisos");
+  return { ok: true, perfil };
 }
 
 /** Cambia el rol de un usuario (solo ADMIN, aplicado también por RLS). */
