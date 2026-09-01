@@ -23,11 +23,18 @@ export default function ModalDesglosePagosWbs({ wbsId, titulo, open, onClose }) 
   const [filas, setFilas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [pdfSolicitudId, setPdfSolicitudId] = useState(null);
+  const [wbsEnCurso, setWbsEnCurso] = useState(null);
+
+  // Ajuste de estado durante el render (no en el Effect) al abrir el modal
+  // con una partida WBS distinta a la ya procesada.
+  if (open && wbsId !== wbsEnCurso) {
+    setWbsEnCurso(wbsId);
+    setCargando(true);
+  }
 
   useEffect(() => {
     if (!open || !wbsId) return;
     let vigente = true;
-    setCargando(true);
     getDesglosePagosWbs(wbsId).then((data) => {
       if (vigente) {
         setFilas(data);

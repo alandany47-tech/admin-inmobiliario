@@ -11,15 +11,23 @@ export default function ModalVisorPDF({ solicitudId, open, onClose }) {
   const [error, setError] = useState("");
   const [blobUrl, setBlobUrl] = useState(null);
   const [nombreArchivo, setNombreArchivo] = useState("solicitud.pdf");
+  const [solicitudEnCurso, setSolicitudEnCurso] = useState(null);
+
+  // Al abrir el modal con una solicitud distinta a la ya procesada, reinicia
+  // el estado de carga durante el render (ajuste de estado por cambio de
+  // prop, patrón recomendado por React) en vez de dentro de un Effect.
+  if (open && solicitudId !== solicitudEnCurso) {
+    setSolicitudEnCurso(solicitudId);
+    setCargando(true);
+    setError("");
+    setBlobUrl(null);
+  }
 
   useEffect(() => {
     if (!open) return;
 
     let vigente = true;
     let urlGenerada = null;
-    setCargando(true);
-    setError("");
-    setBlobUrl(null);
 
     (async () => {
       const solicitud = await getSolicitudPorId(solicitudId);

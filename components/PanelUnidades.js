@@ -1,12 +1,26 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, Search, X } from "lucide-react";
-import { getUnidades, crearUnidad, actualizarUnidad, cambiarEstatusUnidad } from "@/app/actions/unidades";
+import { Plus, Search, Upload, X } from "lucide-react";
+import {
+  getUnidades,
+  crearUnidad,
+  actualizarUnidad,
+  cambiarEstatusUnidad,
+} from "@/app/actions/unidades";
 import { getClientes, buscarOCrearCliente } from "@/app/actions/clientes";
 import { crearContratoVenta, generarPlanDePagos } from "@/app/actions/cobranza";
+import ModalImportarUnidades from "@/components/ModalImportarUnidades";
 
-const FORM_VACIO = { codigoUnidad: "", superficieM2: "", tipoUnidad: "CLIENTE", montoLista: "" };
+const TIPOS_USO = ["DEPARTAMENTO", "OFICINA", "LOCAL", "BODEGA", "OTRO"];
+
+const FORM_VACIO = {
+  codigoUnidad: "",
+  superficieM2: "",
+  tipoUso: "DEPARTAMENTO",
+  precioM2: "",
+  montoLista: "",
+};
 const CLIENTE_NUEVO_VACIO = { nombre: "", rfc: "", telefono: "", email: "" };
 const VENTA_DATOS_VACIO = { montoTotal: "", fechaContrato: new Date().toISOString().slice(0, 10) };
 const PLAN_VACIO = {
@@ -20,39 +34,44 @@ const PLAN_VACIO = {
 };
 
 const ESTILO_ESTATUS = {
-  Disponible:
+  "SIN ASIGNAR":
     "border-green-300 bg-green-50 dark:border-green-900 dark:bg-green-950/40",
-  Apartada:
+  APARTADA:
     "border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40",
-  Vendida:
+  VENDIDA:
     "border-blue-300 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/40",
 };
 
 const BADGE_ESTATUS = {
-  Disponible: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400",
-  Apartada: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400",
-  Vendida: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400",
+  "SIN ASIGNAR": "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400",
+  APARTADA: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400",
+  VENDIDA: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400",
 };
 
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 }
 
+function redondear(valor) {
+  return Math.round((Number(valor) || 0) * 100) / 100;
+}
+
 const inputClase =
   "rounded border border-black/[.08] bg-transparent px-3 py-2 text-sm dark:border-white/[.145]";
 const labelClase = "text-sm font-medium text-zinc-700 dark:text-zinc-300";
 
-/** Panel de unidades: grid por estatus, alta/edición de specs y flujo de venta (contrato + plan de pagos). */
+/** Panel de unidades: grid por estatus, alta/edición de specs, importación masiva y flujo de venta. */
 export default function PanelUnidades({ proyectos }) {
   const [proyectoId, setProyectoId] = useState(proyectos[0]?.id ? String(proyectos[0].id) : "");
   const [unidades, setUnidades] = useState([]);
-  const [cargando, setCargando] = useState(false);
+  const [cargando, setCargando] = useState(Boolean(proyectoId));
   const [clientes, setClientes] = useState([]);
   const [error, setError] = useState("");
 
   const [modalForm, setModalForm] = useState(null);
   const [form, setForm] = useState(FORM_VACIO);
   const [guardandoForm, setGuardandoForm] = useState(false);
+  const [modalImportar, setModalImportar] = useState(false);
 
   const [detalle, setDetalle] = useState(null);
   const [procesandoEstatusId, setProcesandoEstatusId] = useState(null);
@@ -64,12 +83,8 @@ export default function PanelUnidades({ proyectos }) {
   }, []);
 
   useEffect(() => {
-    if (!proyectoId) {
-      setUnidades([]);
-      return;
-    }
+    if (!proyectoId) return;
     let vigente = true;
-    setCargando(true);
     getUnidades(Number(proyectoId)).then((data) => {
       if (vigente) {
         setUnidades(data);
@@ -92,11 +107,40 @@ export default function PanelUnidades({ proyectos }) {
     setForm({
       codigoUnidad: u.codigo_unidad,
       superficieM2: String(u.superficie_m2),
-      tipoUnidad: u.tipo_unidad,
+      tipoUso: u.tipo_uso,
+      precioM2: String(u.precio_m2),
       montoLista: String(u.monto_lista),
     });
     setDetalle(null);
     setError("");
+  }
+
+  function actualizarSuperficie(valor) {
+    setForm((f) => {
+      const superficie = parseFloat(valor) || 0;
+      const precio = parseFloat(f.precioM2) || 0;
+      return { ...f, superficieM2: valor, montoLista: String(redondear(superficie * precio)) };
+    });
+  }
+
+  function actualizarPrecioM2(valor) {
+    setForm((f) => {
+      const precio = parseFloat(valor) || 0;
+      const superficie = parseFloat(f.superficieM2) || 0;
+      return { ...f, precioM2: valor, montoLista: String(redondear(superficie * precio)) };
+    });
+  }
+
+  function actualizarMontoLista(valor) {
+    setForm((f) => {
+      const monto = parseFloat(valor) || 0;
+      const superficie = parseFloat(f.superficieM2) || 0;
+      return {
+        ...f,
+        montoLista: valor,
+        precioM2: superficie > 0 ? String(redondear(monto / superficie)) : f.precioM2,
+      };
+    });
   }
 
   async function guardarUnidad(e) {
@@ -140,6 +184,12 @@ export default function PanelUnidades({ proyectos }) {
 
     setUnidades((filas) => filas.map((f) => (f.id === unidad.id ? { ...f, estatus } : f)));
     setDetalle((d) => (d && d.id === unidad.id ? { ...d, estatus } : d));
+  }
+
+  async function recargarUnidades() {
+    if (!proyectoId) return;
+    const data = await getUnidades(Number(proyectoId));
+    setUnidades(data);
   }
 
   function abrirVenta(unidad) {
@@ -206,7 +256,7 @@ export default function PanelUnidades({ proyectos }) {
       return;
     }
 
-    setUnidades((filas) => filas.map((f) => (f.id === venta.unidad.id ? { ...f, estatus: "Vendida" } : f)));
+    setUnidades((filas) => filas.map((f) => (f.id === venta.unidad.id ? { ...f, estatus: "VENDIDA" } : f)));
     setVenta((v) => ({ ...v, guardando: false, paso: "plan", contratoId: resultado.contrato.id }));
   }
 
@@ -252,7 +302,16 @@ export default function PanelUnidades({ proyectos }) {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <select value={proyectoId} onChange={(e) => setProyectoId(e.target.value)} className={selectClase}>
+        <select
+          value={proyectoId}
+          onChange={(e) => {
+            const valor = e.target.value;
+            setProyectoId(valor);
+            if (valor) setCargando(true);
+            else setUnidades([]);
+          }}
+          className={selectClase}
+        >
           {proyectos.map((p) => (
             <option key={p.id} value={p.id}>
               {p.codigo} — {p.nombre}
@@ -260,14 +319,24 @@ export default function PanelUnidades({ proyectos }) {
           ))}
         </select>
 
-        <button
-          type="button"
-          onClick={abrirNuevaUnidad}
-          disabled={!proyectoId}
-          className="flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] disabled:opacity-50 dark:hover:bg-[#ccc]"
-        >
-          <Plus size={15} /> Nueva Unidad
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setModalImportar(true)}
+            disabled={!proyectoId}
+            className="flex items-center gap-1.5 rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+          >
+            <Upload size={15} /> Importar Excel
+          </button>
+          <button
+            type="button"
+            onClick={abrirNuevaUnidad}
+            disabled={!proyectoId}
+            className="flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-[#383838] disabled:opacity-50 dark:hover:bg-[#ccc]"
+          >
+            <Plus size={15} /> Nueva Unidad
+          </button>
+        </div>
       </div>
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
@@ -293,7 +362,7 @@ export default function PanelUnidades({ proyectos }) {
                   {u.estatus}
                 </span>
               </div>
-              <span className="text-xs text-zinc-600 dark:text-zinc-400">{u.tipo_unidad}</span>
+              <span className="text-xs text-zinc-600 dark:text-zinc-400">{u.tipo_uso}</span>
               <div className="mt-1 flex items-center justify-between text-xs text-zinc-600 dark:text-zinc-400">
                 <span>{Number(u.superficie_m2).toLocaleString("es-MX")} m²</span>
                 <span className="font-medium text-black dark:text-zinc-50">{formatoMXN(u.monto_lista)}</span>
@@ -342,34 +411,53 @@ export default function PanelUnidades({ proyectos }) {
                   step="0.01"
                   className={inputClase}
                   value={form.superficieM2}
-                  onChange={(e) => setForm((f) => ({ ...f, superficieM2: e.target.value }))}
+                  onChange={(e) => actualizarSuperficie(e.target.value)}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className={labelClase}>Tipo</label>
+                <label className={labelClase}>Tipo de Uso</label>
                 <select
                   className={inputClase}
-                  value={form.tipoUnidad}
-                  onChange={(e) => setForm((f) => ({ ...f, tipoUnidad: e.target.value }))}
+                  value={form.tipoUso}
+                  onChange={(e) => setForm((f) => ({ ...f, tipoUso: e.target.value }))}
                 >
-                  <option value="CLIENTE">Cliente</option>
-                  <option value="INVERSIONISTA">Inversionista</option>
-                  <option value="SIN ASIGNAR">Sin asignar</option>
+                  {TIPOS_USO.map((t) => (
+                    <option key={t} value={t}>
+                      {t.charAt(0) + t.slice(1).toLowerCase()}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <label className={labelClase}>Monto de Lista</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className={inputClase}
-                value={form.montoLista}
-                onChange={(e) => setForm((f) => ({ ...f, montoLista: e.target.value }))}
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className={labelClase}>Precio por m²</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className={inputClase}
+                  value={form.precioM2}
+                  onChange={(e) => actualizarPrecioM2(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className={labelClase}>Monto de Lista</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className={inputClase}
+                  value={form.montoLista}
+                  onChange={(e) => actualizarMontoLista(e.target.value)}
+                />
+              </div>
             </div>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              Monto de Lista = Superficie × Precio por m². Editar cualquiera de los tres recalcula los
+              otros dos automáticamente.
+            </p>
 
             {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
@@ -417,12 +505,16 @@ export default function PanelUnidades({ proyectos }) {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-zinc-500 dark:text-zinc-400">Tipo</span>
-                <span>{detalle.tipo_unidad}</span>
+                <span className="text-zinc-500 dark:text-zinc-400">Tipo de Uso</span>
+                <span>{detalle.tipo_uso}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-zinc-500 dark:text-zinc-400">Superficie</span>
                 <span>{Number(detalle.superficie_m2).toLocaleString("es-MX")} m²</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-500 dark:text-zinc-400">Precio por m²</span>
+                <span>{formatoMXN(detalle.precio_m2)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-zinc-500 dark:text-zinc-400">Monto de Lista</span>
@@ -439,29 +531,29 @@ export default function PanelUnidades({ proyectos }) {
                 Editar Specs
               </button>
 
-              {detalle.estatus === "Disponible" && (
+              {detalle.estatus === "SIN ASIGNAR" && (
                 <button
                   type="button"
                   disabled={procesandoEstatusId === detalle.id}
-                  onClick={() => cambiarEstatus(detalle, "Apartada")}
+                  onClick={() => cambiarEstatus(detalle, "APARTADA")}
                   className="rounded-full border border-amber-300 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-900 dark:text-amber-400 dark:hover:bg-amber-950"
                 >
                   Apartar
                 </button>
               )}
 
-              {detalle.estatus === "Apartada" && (
+              {detalle.estatus === "APARTADA" && (
                 <button
                   type="button"
                   disabled={procesandoEstatusId === detalle.id}
-                  onClick={() => cambiarEstatus(detalle, "Disponible")}
+                  onClick={() => cambiarEstatus(detalle, "SIN ASIGNAR")}
                   className="rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
                 >
                   Liberar
                 </button>
               )}
 
-              {detalle.estatus !== "Vendida" && (
+              {detalle.estatus !== "VENDIDA" && (
                 <button
                   type="button"
                   onClick={() => abrirVenta(detalle)}
@@ -783,6 +875,17 @@ export default function PanelUnidades({ proyectos }) {
             </form>
           )}
         </div>
+      )}
+
+      {modalImportar && (
+        <ModalImportarUnidades
+          proyectoId={Number(proyectoId)}
+          onImportado={() => {
+            setModalImportar(false);
+            recargarUnidades();
+          }}
+          onCerrar={() => setModalImportar(false)}
+        />
       )}
     </div>
   );

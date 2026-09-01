@@ -1,3 +1,5 @@
+import { getConfiguracionPlantilla } from "@/app/actions/plantillas";
+
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 }
@@ -23,18 +25,26 @@ function agruparPorProyecto(solicitudes) {
 
 // Colores literales (hex/rgba), no utilidades de paleta Tailwind: html2canvas
 // no soporta lab()/oklch(), que es como Tailwind v4 resuelve zinc-500,
-// black/20, etc. — misma nota que HojaSolicitud en SolicitudPagoPDF.js.
-function HojaResumen({ solicitudes, hojaRef }) {
+// black/20, etc. — misma nota que HojaSolicitud en SolicitudPagoPDF.js. El
+// color de acento sí es dinámico (config.color_primario) porque se inyecta
+// como style inline, no como utilidad de Tailwind.
+function HojaResumen({ solicitudes, config, hojaRef }) {
   const porProyecto = agruparPorProyecto(solicitudes);
   const totalGeneral = solicitudes.reduce((s, r) => s + Number(r.total ?? 0), 0);
+  const colorPrimario = config?.color_primario || "#000000";
 
   return (
     <div ref={hojaRef} className="flex w-[816px] flex-col bg-white p-10 text-black">
-      <div className="flex items-center justify-between border-b-4 border-black pb-4">
+      <div className="flex items-center justify-between border-b-4 pb-4" style={{ borderColor: colorPrimario }}>
         <div className="flex flex-col">
-          <span className="text-3xl font-black tracking-tight">DIPZ</span>
+          {config?.logo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={config.logo_url} alt="Logo" className="h-10 w-auto object-contain" crossOrigin="anonymous" />
+          ) : (
+            <span className="text-3xl font-black tracking-tight">{config?.encabezado_linea1 || "DIPZ"}</span>
+          )}
           <span className="text-[10px] font-semibold tracking-[0.2em] text-[#52525c]">
-            THE FUTURE OF REAL ESTATE
+            {config?.encabezado_linea2 || "THE FUTURE OF REAL ESTATE"}
           </span>
         </div>
         <div className="flex flex-col items-end">
@@ -49,7 +59,7 @@ function HojaResumen({ solicitudes, hojaRef }) {
         </span>
         <table className="w-full border-collapse text-xs">
           <thead>
-            <tr className="bg-black text-white">
+            <tr style={{ backgroundColor: colorPrimario }} className="text-white">
               <th className="border border-black px-3 py-2 text-left">Proyecto</th>
               <th className="border border-black px-3 py-2 text-right"># Solicitudes</th>
               <th className="border border-black px-3 py-2 text-right">Monto Acumulado</th>
@@ -75,7 +85,7 @@ function HojaResumen({ solicitudes, hojaRef }) {
         </span>
         <table className="w-full border-collapse text-xs">
           <thead>
-            <tr className="bg-black text-white">
+            <tr style={{ backgroundColor: colorPrimario }} className="text-white">
               <th className="border border-black px-2 py-1.5 text-left">Folio</th>
               <th className="border border-black px-2 py-1.5 text-left">Proyecto</th>
               <th className="border border-black px-2 py-1.5 text-left">Proveedor</th>
@@ -98,11 +108,18 @@ function HojaResumen({ solicitudes, hojaRef }) {
       </div>
 
       <div className="mt-4 flex w-64 flex-col self-end border border-black text-xs">
-        <div className="flex items-center justify-between bg-black px-3 py-1.5 font-bold text-white">
+        <div
+          className="flex items-center justify-between px-3 py-1.5 font-bold text-white"
+          style={{ backgroundColor: colorPrimario }}
+        >
           <span>Total General</span>
           <span>{formatoMXN(totalGeneral)}</span>
         </div>
       </div>
+
+      {config?.terminos_condiciones && (
+        <p className="mt-6 text-[10px] leading-relaxed text-[#71717b]">{config.terminos_condiciones}</p>
+      )}
 
       <div className="mt-16 grid grid-cols-3 gap-8 text-xs">
         {["Elaboró", "Autorizó", "Vo. Bo."].map((firma) => (
@@ -112,6 +129,8 @@ function HojaResumen({ solicitudes, hojaRef }) {
           </div>
         ))}
       </div>
+
+      {config?.pie_pagina && <p className="mt-4 text-center text-xs text-[#52525c]">{config.pie_pagina}</p>}
     </div>
   );
 }
@@ -120,10 +139,13 @@ function HojaResumen({ solicitudes, hojaRef }) {
  * Renderiza fuera de pantalla el resumen corporativo de solicitudes por
  * autorizar (agrupado por proyecto + tabla detalle + firmas), lo convierte a
  * PDF (jsPDF + html2canvas) y dispara la descarga. Mismo patrón que
- * generarPdfBlob en SolicitudPagoPDF.js.
+ * generarPdfBlob en SolicitudPagoPDF.js. Consume dinámicamente
+ * configuracion_plantillas (clave SOLICITUD_PAGO) para logo/encabezado/color/
+ * pie/términos.
  */
 export async function generarPdfResumenAutorizaciones(solicitudes) {
-  const [{ default: jsPDF }, { default: html2canvas }, { createRoot }] = await Promise.all([
+  const [config, { default: jsPDF }, { default: html2canvas }, { createRoot }] = await Promise.all([
+    getConfiguracionPlantilla("SOLICITUD_PAGO"),
     import("jspdf"),
     import("html2canvas"),
     import("react-dom/client"),
@@ -137,7 +159,7 @@ export async function generarPdfResumenAutorizaciones(solicitudes) {
 
   const hojaRef = { current: null };
   const root = createRoot(contenedor);
-  root.render(<HojaResumen solicitudes={solicitudes} hojaRef={hojaRef} />);
+  root.render(<HojaResumen solicitudes={solicitudes} config={config} hojaRef={hojaRef} />);
 
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 

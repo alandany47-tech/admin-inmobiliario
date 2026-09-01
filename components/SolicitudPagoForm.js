@@ -80,10 +80,7 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
   const [toast, setToast] = useState(null);
 
   useEffect(() => {
-    if (!form.proyectoId) {
-      setFolioPreview(null);
-      return;
-    }
+    if (!form.proyectoId) return;
     let vigente = true;
     getFolioPreview(Number(form.proyectoId)).then((folio) => {
       if (vigente) setFolioPreview(folio);
@@ -144,16 +141,6 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
   const [wbsAbierto, setWbsAbierto] = useState(false);
   const wbsBoxRef = useRef(null);
 
-  // Al cambiar (o limpiar) el proyecto, la partida WBS ya seleccionada deja
-  // de ser válida (pertenece al catálogo de otro proyecto o no hay proyecto
-  // aún): se resetea para forzar una nueva selección contra el catálogo
-  // correcto.
-  useEffect(() => {
-    setForm((f) => ({ ...f, wbsCategoria: "", wbsPartida: "", wbsCatalogId: null }));
-    setWbsBusqueda("");
-    setWbsAbierto(false);
-  }, [form.proyectoId]);
-
   const wbsFiltrado = useMemo(() => {
     const termino = wbsBusqueda.trim().toLowerCase();
     if (!termino) return wbsHojas;
@@ -176,6 +163,16 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
 
   function actualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
+  }
+
+  // Al cambiar (o limpiar) el proyecto, la partida WBS ya seleccionada deja
+  // de ser válida (pertenece al catálogo de otro proyecto o no hay proyecto
+  // aún): se resetea aquí mismo, en el evento que dispara el cambio, en vez
+  // de en un Effect aparte.
+  function cambiarProyecto(valor) {
+    setForm((f) => ({ ...f, proyectoId: valor, wbsCategoria: "", wbsPartida: "", wbsCatalogId: null }));
+    setWbsBusqueda("");
+    setWbsAbierto(false);
   }
 
   function seleccionarWbs(entrada) {
@@ -336,7 +333,7 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
               <select
                 className={inputClase}
                 value={form.proyectoId}
-                onChange={(e) => actualizarCampo("proyectoId", e.target.value)}
+                onChange={(e) => cambiarProyecto(e.target.value)}
               >
                 <option value="">Selecciona un proyecto…</option>
                 {proyectos.map((p) => (

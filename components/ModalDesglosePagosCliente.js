@@ -28,11 +28,18 @@ const BADGE_ESTATUS = {
 export default function ModalDesglosePagosCliente({ clienteId, titulo, open, onClose }) {
   const [contratos, setContratos] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [clienteEnCurso, setClienteEnCurso] = useState(null);
+
+  // Ajuste de estado durante el render (no en el Effect) al abrir el modal
+  // con un cliente distinto al ya procesado.
+  if (open && clienteId !== clienteEnCurso) {
+    setClienteEnCurso(clienteId);
+    setCargando(true);
+  }
 
   useEffect(() => {
     if (!open || !clienteId) return;
     let vigente = true;
-    setCargando(true);
     getDesglosePagosCliente(clienteId).then((data) => {
       if (vigente) {
         setContratos(data);

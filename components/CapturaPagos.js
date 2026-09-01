@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, X } from "lucide-react";
-import { getPlanDePagos, procesarPagoCobranza } from "@/app/actions/cobranza";
+import { Download, FileDown, Search, X } from "lucide-react";
+import { getPlanDePagos, procesarPagoCobranza, getDesglosePagosCliente } from "@/app/actions/cobranza";
+import { descargarReciboPago } from "@/components/PlantillaReciboPago";
+import { descargarEstadoCuenta } from "@/components/PlantillaEstadoCuenta";
+import PanelAlertasVencimiento from "@/components/PanelAlertasVencimiento";
 
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -34,16 +37,18 @@ const inputClase =
   "rounded border border-black/[.08] bg-transparent px-3 py-2 text-sm dark:border-white/[.145]";
 const labelClase = "text-sm font-medium text-zinc-700 dark:text-zinc-300";
 
-/** Captura de pagos de cobranza: busca un contrato, muestra su plan de pagos y permite abonar dispersando a Tesorería. */
-export default function CapturaPagos({ contratos, cuentas }) {
+/** Captura de pagos de cobranza: alertas de vencimiento, búsqueda de contrato, plan de pagos y dispersión a Tesorería. */
+export default function CapturaPagos({ contratos, cuentas, proyectos }) {
   const [busqueda, setBusqueda] = useState("");
   const [abierto, setAbierto] = useState(false);
   const [contrato, setContrato] = useState(null);
   const [plan, setPlan] = useState([]);
   const [cargandoPlan, setCargandoPlan] = useState(false);
   const [error, setError] = useState("");
+  const [exportando, setExportando] = useState(false);
 
   const [abono, setAbono] = useState(null);
+  const [reciboListo, setReciboListo] = useState(null);
 
   const boxRef = useRef(null);
   useEffect(() => {
@@ -69,10 +74,19 @@ export default function CapturaPagos({ contratos, cuentas }) {
     setBusqueda(`${c.unidades?.codigo_unidad ?? ""} — ${c.clientes?.nombre ?? ""}`);
     setAbierto(false);
     setError("");
+    setReciboListo(null);
     setCargandoPlan(true);
     const data = await getPlanDePagos(c.id);
     setPlan(data);
     setCargandoPlan(false);
+  }
+
+  async function exportarEstadoCuenta() {
+    if (!contrato?.clientes?.id) return;
+    setExportando(true);
+    const contratosCliente = await getDesglosePagosCliente(contrato.clientes.id);
+    await descargarEstadoCuenta(contrato.clientes, contratosCliente);
+    setExportando(false);
   }
 
   function estatusVisual(fila) {
@@ -83,6 +97,7 @@ export default function CapturaPagos({ contratos, cuentas }) {
   }
 
   function abrirAbono(fila) {
+    setReciboListo(null);
     setAbono({
       fila,
       monto: String(Number(fila.monto_programado) - Number(fila.monto_pagado)),
@@ -124,11 +139,24 @@ export default function CapturaPagos({ contratos, cuentas }) {
 
     const data = await getPlanDePagos(contrato.id);
     setPlan(data);
+    setReciboListo({
+      folio: `REC-${abono.fila.id.slice(0, 8).toUpperCase()}`,
+      fecha: abono.fechaPago,
+      clienteNombre: contrato.clientes?.nombre ?? "",
+      proyectoCodigo: contrato.proyectos?.codigo ?? "",
+      proyectoNombre: contrato.proyectos?.nombre ?? "",
+      unidadCodigo: contrato.unidades?.codigo_unidad ?? "",
+      tipoPago: abono.fila.tipo_pago,
+      monto,
+      metodoPago: abono.metodoPago,
+    });
     setAbono(null);
   }
 
   return (
     <div className="flex flex-col gap-5">
+      <PanelAlertasVencimiento proyectos={proyectos} />
+
       <div className="relative max-w-lg" ref={boxRef}>
         <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
         <input
@@ -181,10 +209,33 @@ export default function CapturaPagos({ contratos, cuentas }) {
                 {contrato.proyectos?.codigo} — {contrato.proyectos?.nombre}
               </span>
             </div>
-            <span className="text-sm font-semibold text-black dark:text-zinc-50">
-              {formatoMXN(contrato.monto_total_venta)}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold text-black dark:text-zinc-50">
+                {formatoMXN(contrato.monto_total_venta)}
+              </span>
+              <button
+                type="button"
+                onClick={exportarEstadoCuenta}
+                disabled={exportando}
+                className="flex items-center gap-1.5 rounded-full border border-black/[.08] px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+              >
+                <FileDown size={13} /> {exportando ? "Generando…" : "Estado de Cuenta"}
+              </button>
+            </div>
           </div>
+
+          {reciboListo && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-green-300 bg-green-50 px-4 py-3 text-sm dark:border-green-900 dark:bg-green-950/40">
+              <span className="text-green-700 dark:text-green-400">Abono registrado correctamente.</span>
+              <button
+                type="button"
+                onClick={() => descargarReciboPago(reciboListo)}
+                className="flex items-center gap-1.5 rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background dark:hover:bg-[#ccc]"
+              >
+                <Download size={13} /> Descargar / Imprimir Recibo
+              </button>
+            </div>
+          )}
 
           {cargandoPlan ? (
             <p className="text-sm text-zinc-500 dark:text-zinc-400">Cargando plan de pagos…</p>

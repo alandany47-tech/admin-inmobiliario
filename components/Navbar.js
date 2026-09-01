@@ -13,6 +13,7 @@ import {
   Landmark,
   LayoutDashboard,
   Moon,
+  Settings,
   ShieldCheck,
   Sun,
   Table,
@@ -35,6 +36,7 @@ const ENLACES = [
   { href: "/control-maestro", label: "Control Maestro", icon: LayoutDashboard },
   { href: "/wbs", label: "Presupuesto WBS", icon: Wallet },
   { href: "/historial", label: "Historial", icon: Table },
+  { href: "/configuracion/plantillas", label: "Plantillas PDF", icon: Settings },
 ];
 
 /** Navegación lateral global del sistema DIPZ. */
@@ -43,6 +45,9 @@ export default function Navbar() {
   const { resolvedTheme, setTheme } = useTheme();
   const [montado, setMontado] = useState(false);
 
+  // Excepción necesaria: solo así se evita el desfase de hidratación entre
+  // el render del servidor (sin tema resuelto) y el del cliente.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMontado(true), []);
 
   return (

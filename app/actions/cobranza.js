@@ -27,7 +27,7 @@ export async function getContratosVenta() {
   return data;
 }
 
-/** Crea el contrato de venta de una unidad y la marca como 'Vendida'. */
+/** Crea el contrato de venta de una unidad y la marca como 'VENDIDA'. */
 export async function crearContratoVenta(payload) {
   const { proyectoId, unidadId, clienteId, montoTotal, fechaContrato } = payload;
 
@@ -54,7 +54,7 @@ export async function crearContratoVenta(payload) {
 
   const { error: errorUnidad } = await supabase
     .from("unidades")
-    .update({ estatus: "Vendida" })
+    .update({ estatus: "VENDIDA" })
     .eq("id", unidadId);
 
   if (errorUnidad) {
@@ -181,13 +181,17 @@ export async function procesarPagoCobranza(planPagoId, cuentaId, monto, fechaPag
  * mora (máximo entre las filas Pendiente/Parcial con fecha_programada
  * vencida). Se agrega en JS a partir de un select anidado en vez de una vista
  * SQL nueva, mismo criterio que el árbol WBS (construirArbol en lib/wbs.js).
+ * `proyectoId` (opcional) filtra a solo los clientes con al menos un
+ * contrato ligado a una unidad de ese proyecto; el filtro se aplica en JS
+ * sobre `unidades.proyecto_id`, mismo criterio de "agregar en el cliente" que
+ * el resto de esta función.
  */
-export async function getCarteraClientes() {
+export async function getCarteraClientes(proyectoId) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("clientes")
     .select(
-      "id, nombre, rfc, telefono, email, contratos_venta(id, monto_total_venta, estatus, planes_pago_cobranza(monto_programado, monto_pagado, fecha_programada, estatus))"
+      "id, nombre, rfc, telefono, email, direccion, contacto_secundario, notas, contratos_venta(id, monto_total_venta, estatus, unidades(proyecto_id, codigo_unidad), planes_pago_cobranza(monto_programado, monto_pagado, fecha_programada, estatus))"
     )
     .order("nombre", { ascending: true });
 
@@ -199,9 +203,18 @@ export async function getCarteraClientes() {
   const hoy = new Date().toISOString().slice(0, 10);
 
   return data
-    .filter((cliente) => (cliente.contratos_venta ?? []).length > 0)
+    .map((cliente) => ({
+      ...cliente,
+      contratos_venta: proyectoId
+        ? (cliente.contratos_venta ?? []).filter((c) => c.unidades?.proyecto_id === proyectoId)
+        : cliente.contratos_venta ?? [],
+    }))
+    // Sin filtro de proyecto se listan todos los clientes (es el directorio
+    // completo, incluye a quien todavía no tiene ninguna unidad asignada);
+    // con filtro de proyecto solo los que sí tienen contrato en ese proyecto.
+    .filter((cliente) => !proyectoId || cliente.contratos_venta.length > 0)
     .map((cliente) => {
-      const contratos = cliente.contratos_venta ?? [];
+      const contratos = cliente.contratos_venta;
       const ventaTotal = contratos.reduce((s, c) => s + Number(c.monto_total_venta), 0);
       let cobrado = 0;
       let diasMora = 0;
@@ -222,6 +235,9 @@ export async function getCarteraClientes() {
         rfc: cliente.rfc,
         telefono: cliente.telefono,
         email: cliente.email,
+        direccion: cliente.direccion,
+        contactoSecundario: cliente.contacto_secundario,
+        notas: cliente.notas,
         cantidadContratos: contratos.length,
         ventaTotal,
         cobrado,
@@ -229,6 +245,51 @@ export async function getCarteraClientes() {
         diasMora,
       };
     });
+}
+
+/**
+ * Alertas de vencimiento: filas del plan de pagos Pendientes/Parciales cuya
+ * fecha programada cae dentro de los próximos 30 días (incluye ya vencidas,
+ * con diasRestantes negativo), agrupadas en los buckets 7/15/30 días por el
+ * caller. `proyectoId` (opcional) filtra por unidad.
+ */
+export async function getAlertasVencimiento(proyectoId) {
+  const supabase = await createClient();
+  const hoy = new Date().toISOString().slice(0, 10);
+  const limite = new Date();
+  limite.setDate(limite.getDate() + 30);
+  const limiteISO = limite.toISOString().slice(0, 10);
+
+  let query = supabase
+    .from("planes_pago_cobranza")
+    .select(
+      "id, tipo_pago, monto_programado, monto_pagado, fecha_programada, estatus, contratos_venta!inner(id, proyecto_id, clientes(id, nombre), unidades(codigo_unidad, proyecto_id), proyectos(codigo, nombre))"
+    )
+    .in("estatus", ["Pendiente", "Parcial"])
+    .lte("fecha_programada", limiteISO)
+    .order("fecha_programada", { ascending: true });
+
+  if (proyectoId) {
+    query = query.eq("contratos_venta.proyecto_id", proyectoId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("Error al consultar alertas de vencimiento:", error.message);
+    return [];
+  }
+
+  return data.map((p) => ({
+    id: p.id,
+    tipoPago: p.tipo_pago,
+    saldo: Number(p.monto_programado) - Number(p.monto_pagado),
+    fechaProgramada: p.fecha_programada,
+    diasRestantes: Math.floor((new Date(p.fecha_programada) - new Date(hoy)) / 86400000),
+    clienteNombre: p.contratos_venta?.clientes?.nombre ?? "",
+    unidadCodigo: p.contratos_venta?.unidades?.codigo_unidad ?? "",
+    proyectoCodigo: p.contratos_venta?.proyectos?.codigo ?? "",
+  }));
 }
 
 /** Desglose de todas las filas del plan de pagos de un cliente, a través de todos sus contratos. */

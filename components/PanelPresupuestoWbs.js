@@ -334,7 +334,7 @@ export default function PanelPresupuestoWbs({ proyectos }) {
   const router = useRouter();
   const [proyectoId, setProyectoId] = useState(proyectos[0]?.id ? String(proyectos[0].id) : "");
   const [filas, setFilas] = useState([]);
-  const [cargando, setCargando] = useState(false);
+  const [cargando, setCargando] = useState(Boolean(proyectoId));
   const [error, setError] = useState("");
   const [modalAbierto, setModalAbierto] = useState(false);
   const [renombrando, setRenombrando] = useState(null);
@@ -358,12 +358,8 @@ export default function PanelPresupuestoWbs({ proyectos }) {
   const [versionCambios, setVersionCambios] = useState(0);
 
   useEffect(() => {
-    if (!proyectoId) {
-      setFilas([]);
-      return;
-    }
+    if (!proyectoId) return;
     let vigente = true;
-    setCargando(true);
     getWbsPresupuesto(Number(proyectoId)).then((data) => {
       if (vigente) {
         setFilas(data);
@@ -574,7 +570,16 @@ export default function PanelPresupuestoWbs({ proyectos }) {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <select value={proyectoId} onChange={(e) => setProyectoId(e.target.value)} className={selectClase}>
+          <select
+            value={proyectoId}
+            onChange={(e) => {
+              const valor = e.target.value;
+              setProyectoId(valor);
+              if (valor) setCargando(true);
+              else setFilas([]);
+            }}
+            className={selectClase}
+          >
             {proyectos.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.codigo} — {p.nombre}
