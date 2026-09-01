@@ -199,6 +199,24 @@ export async function getPlanDePagos(contratoId) {
 }
 
 /**
+ * Resincroniza `contratos_venta.monto_enganche_pagado` sumando `monto_pagado`
+ * de todas las filas `tipo_pago='ENGANCHE'` del contrato. Se llama después de
+ * cualquier RPC de dinero que toque una fila ENGANCHE (abono o reversión),
+ * nunca dentro del RPC mismo (regla 7 de CLAUDE.md: no tocar las funciones
+ * atómicas de dinero para un cambio que no es en sí mismo de dinero).
+ */
+async function sincronizarEnganchePagado(supabase, contratoId) {
+  const { data: filasEnganche } = await supabase
+    .from("planes_pago_cobranza")
+    .select("monto_pagado")
+    .eq("contrato_id", contratoId)
+    .eq("tipo_pago", "ENGANCHE");
+
+  const totalPagado = (filasEnganche ?? []).reduce((s, f) => s + Number(f.monto_pagado), 0);
+  await supabase.from("contratos_venta").update({ monto_enganche_pagado: totalPagado }).eq("id", contratoId);
+}
+
+/**
  * Dispersa el abono de una fila del plan de pagos: la función de Postgres
  * ingresa el movimiento en Tesorería, actualiza el saldo de la cuenta y el
  * monto_pagado/estatus de la fila de forma atómica. Después (fuera del RPC
@@ -227,17 +245,48 @@ export async function procesarPagoCobranza(planPagoId, cuentaId, monto, fechaPag
     .single();
 
   if (plan?.tipo_pago === "ENGANCHE") {
-    const { data: filasEnganche } = await supabase
-      .from("planes_pago_cobranza")
-      .select("monto_pagado")
-      .eq("contrato_id", plan.contrato_id)
-      .eq("tipo_pago", "ENGANCHE");
+    await sincronizarEnganchePagado(supabase, plan.contrato_id);
+  }
 
-    const totalPagado = (filasEnganche ?? []).reduce((s, f) => s + Number(f.monto_pagado), 0);
-    await supabase
-      .from("contratos_venta")
-      .update({ monto_enganche_pagado: totalPagado })
-      .eq("id", plan.contrato_id);
+  revalidatePath("/cobranza/pagos");
+  revalidatePath("/cobranza/clientes");
+  revalidatePath("/tesoreria");
+  revalidatePath("/dashboard");
+  return { ok: true, resultado: data };
+}
+
+/**
+ * Revierte el abono de una fila del plan de pagos: la RPC `revertir_pago_cobranza`
+ * descuenta el `monto_pagado` acumulado de la cuenta bancaria, inserta un
+ * egreso de compensación en Tesorería (no borra los ingresos originales) y
+ * regresa la fila a `monto_pagado=0`/`estatus='Pendiente'`, de forma atómica
+ * (mismo patrón que `revertir_pago_solicitud`). Después, si la fila era
+ * 'ENGANCHE', resincroniza `contratos_venta.monto_enganche_pagado` — si el
+ * contrato ya estaba `contrato_firmado=true`, esto puede dejar
+ * `monto_enganche_pagado` por debajo de `monto_enganche_pactado` sin revertir
+ * la firma ni el estatus 'VENDIDA' de la unidad (caso de borde documentado,
+ * no automatizado: requeriría una decisión de negocio sobre qué hacer con
+ * una unidad ya vendida cuyo enganche se desliquida).
+ */
+export async function revertirPagoCobranza(planPagoId) {
+  const supabase = await createClient();
+
+  const { data: plan } = await supabase
+    .from("planes_pago_cobranza")
+    .select("contrato_id, tipo_pago")
+    .eq("id", planPagoId)
+    .single();
+
+  const { data, error } = await supabase.rpc("revertir_pago_cobranza", {
+    p_plan_pago_id: planPagoId,
+  });
+
+  if (error) {
+    return { error: `No se pudo revertir el abono: ${error.message}` };
+  }
+
+  if (plan?.tipo_pago === "ENGANCHE") {
+    await sincronizarEnganchePagado(supabase, plan.contrato_id);
   }
 
   revalidatePath("/cobranza/pagos");

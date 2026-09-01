@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Download, FileDown, Search, X } from "lucide-react";
+import { CheckCircle2, Download, FileDown, RotateCcw, Search, X } from "lucide-react";
 import {
   getPlanDePagos,
   procesarPagoCobranza,
+  revertirPagoCobranza,
   getDesglosePagosCliente,
   confirmarFirmaContrato,
 } from "@/app/actions/cobranza";
@@ -55,6 +56,7 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
   const [abono, setAbono] = useState(null);
   const [reciboListo, setReciboListo] = useState(null);
   const [firma, setFirma] = useState(null);
+  const [revirtiendoId, setRevirtiendoId] = useState(null);
 
   const boxRef = useRef(null);
   useEffect(() => {
@@ -188,6 +190,29 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
       metodoPago: abono.metodoPago,
     });
     setAbono(null);
+  }
+
+  async function revertirAbono(fila) {
+    if (
+      !window.confirm(
+        `¿Revertir el abono de "${fila.tipo_pago}"? Se descontará ${formatoMXN(fila.monto_pagado)} de la cuenta y la fila regresará a Pendiente.`
+      )
+    ) {
+      return;
+    }
+
+    setRevirtiendoId(fila.id);
+    setError("");
+    const resultado = await revertirPagoCobranza(fila.id);
+    setRevirtiendoId(null);
+
+    if (resultado.error) {
+      setError(resultado.error);
+      return;
+    }
+
+    const data = await getPlanDePagos(contrato.id);
+    setPlan(data);
   }
 
   return (
@@ -341,15 +366,28 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {puedeAbonar && (
-                            <button
-                              type="button"
-                              onClick={() => abrirAbono(p)}
-                              className="rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background hover:bg-[#383838] dark:hover:bg-[#ccc]"
-                            >
-                              Abonar
-                            </button>
-                          )}
+                          <div className="flex items-center justify-end gap-2">
+                            {Number(p.monto_pagado) > 0 && (
+                              <button
+                                type="button"
+                                disabled={revirtiendoId === p.id}
+                                onClick={() => revertirAbono(p)}
+                                title="Revertir Abono"
+                                className="text-red-600 hover:text-red-700 disabled:opacity-50 dark:text-red-400"
+                              >
+                                <RotateCcw size={13} />
+                              </button>
+                            )}
+                            {puedeAbonar && (
+                              <button
+                                type="button"
+                                onClick={() => abrirAbono(p)}
+                                className="rounded-full bg-foreground px-3 py-1.5 text-xs font-medium text-background hover:bg-[#383838] dark:hover:bg-[#ccc]"
+                              >
+                                Abonar
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
