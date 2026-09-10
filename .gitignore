@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# graphify (generated knowledge graph, rebuild with `graphify update .`)
+/graphify-out/
