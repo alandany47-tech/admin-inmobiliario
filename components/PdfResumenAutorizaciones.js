@@ -34,17 +34,19 @@ function agruparPorProyecto(solicitudes) {
 // Colores literales (hex/rgba), no utilidades de paleta Tailwind: html2canvas
 // no soporta lab()/oklch(), que es como Tailwind v4 resuelve zinc-500,
 // black/20, etc. — misma nota que HojaSolicitud en SolicitudPagoPDF.js. El
-// color de acento sí es dinámico (config.color_primario) porque se inyecta
-// como style inline, no como utilidad de Tailwind.
+// color de acento es por proyecto (proyectos.color_primario) cuando todas las
+// solicitudes son del mismo proyecto; si el resumen abarca varios, cae al
+// color global de configuracion_plantillas.
 function HojaResumen({ solicitudes, config, hojaRef }) {
   const porProyecto = agruparPorProyecto(solicitudes);
   const totalGeneral = solicitudes.reduce((s, r) => s + Number(r.total ?? 0), 0);
-  const colorPrimario = config?.color_primario || "#000000";
+  const proyecto = proyectoUnico(solicitudes);
+  const colorPrimario = proyecto?.color_primario || config?.color_primario || "#000000";
 
   return (
     <div ref={hojaRef} className="flex w-[816px] flex-col bg-white p-10 text-black">
       <div className="flex items-center justify-between border-b-4 pb-4" style={{ borderColor: colorPrimario }}>
-        <EncabezadoDualLogo configDipz={config} proyecto={proyectoUnico(solicitudes)} />
+        <EncabezadoDualLogo configDipz={config} proyecto={proyecto} />
         <div className="flex flex-col items-end">
           <span className="text-lg font-bold uppercase tracking-wide">Resumen de Autorizaciones</span>
           <span className="text-xs text-[#52525c]">{formatoFecha(new Date())}</span>

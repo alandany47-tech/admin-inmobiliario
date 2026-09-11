@@ -23,9 +23,12 @@ function formatoFecha(fecha) {
 }
 
 // Colores literales (hex/rgba), no utilidades de paleta Tailwind: html2canvas
-// no soporta lab()/oklch() (ver nota en SolicitudPagoPDF.js).
+// no soporta lab()/oklch() (ver nota en SolicitudPagoPDF.js). El color de
+// acento es por proyecto (proyectos.color_primario) cuando todos los
+// contratos son del mismo proyecto; si abarca varios, cae al color global.
 function HojaEstadoCuenta({ cliente, contratos, config, hojaRef }) {
-  const colorPrimario = config?.color_primario || "#0f172a";
+  const proyecto = proyectoUnico(contratos);
+  const colorPrimario = proyecto?.color_primario || config?.color_primario || "#0f172a";
   const ventaTotal = contratos.reduce((s, c) => s + Number(c.monto_total_venta), 0);
   const filas = contratos.flatMap((c) => c.planes_pago_cobranza ?? []);
   const cobrado = filas.reduce((s, p) => s + Number(p.monto_pagado), 0);
@@ -33,7 +36,7 @@ function HojaEstadoCuenta({ cliente, contratos, config, hojaRef }) {
   return (
     <div ref={hojaRef} className="flex w-[816px] flex-col bg-white p-10 text-black">
       <div className="flex items-center justify-between border-b-4 pb-4" style={{ borderColor: colorPrimario }}>
-        <EncabezadoDualLogo configDipz={config} proyecto={proyectoUnico(contratos)} />
+        <EncabezadoDualLogo configDipz={config} proyecto={proyecto} />
         <div className="flex flex-col items-end">
           <span className="text-lg font-bold uppercase tracking-wide">Estado de Cuenta Consolidado</span>
           <span className="text-xs text-[#52525c]">{formatoFecha(new Date().toISOString().slice(0, 10))}</span>

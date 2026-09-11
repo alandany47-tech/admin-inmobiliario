@@ -20,15 +20,17 @@ function Campo({ label, valor }) {
 
 // Colores literales (hex/rgba), no utilidades de paleta Tailwind: html2canvas
 // no soporta lab()/oklch() (ver nota en SolicitudPagoPDF.js). El color de
-// acento sí es dinámico (config.color_primario) porque se inyecta como
-// style inline, no como utilidad de Tailwind.
+// acento es dinámico y por proyecto: usa el color propio del proyecto
+// (proyectos.color_primario) si lo tiene, si no cae al color global de
+// configuracion_plantillas.
 function HojaRecibo({ pago, config, hojaRef }) {
-  const colorPrimario = config?.color_primario || "#0f172a";
+  const proyecto = pago.proyecto;
+  const colorPrimario = proyecto?.color_primario || config?.color_primario || "#0f172a";
 
   return (
     <div ref={hojaRef} className="flex w-[816px] flex-col bg-white p-10 text-black">
       <div className="flex items-center justify-between border-b-4 pb-4" style={{ borderColor: colorPrimario }}>
-        <EncabezadoDualLogo configDipz={config} proyecto={pago.proyecto} />
+        <EncabezadoDualLogo configDipz={config} proyecto={proyecto} />
         <div className="flex flex-col items-end">
           <span className="text-lg font-bold uppercase tracking-wide">Recibo de Pago</span>
           <span className="font-mono text-sm">{pago.folio}</span>

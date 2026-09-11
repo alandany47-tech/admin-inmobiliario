@@ -98,6 +98,30 @@ export async function subirLogoProyecto(proyectoId, formData) {
   return { ok: true, url: publicUrl };
 }
 
+/**
+ * Actualiza solo el color de acento (primario/secundario) de un proyecto,
+ * sin tocar código/nombre/presupuesto/logo — usado desde el editor rápido de
+ * "Logo y color por proyecto" en Configuración de Plantillas PDF.
+ */
+export async function actualizarColoresProyecto(id, { colorPrimario, colorSecundario }) {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("proyectos")
+    .update({
+      color_primario: colorPrimario?.trim() || "#0f172a",
+      color_secundario: colorSecundario?.trim() || "#2563eb",
+    })
+    .eq("id", id);
+
+  if (error) {
+    return { error: `No se pudo actualizar el color: ${error.message}` };
+  }
+
+  revalidatePath("/proyectos");
+  revalidatePath("/configuracion/plantillas");
+  return { ok: true };
+}
+
 function validarDatosProyecto({ codigo, nombre, presupuesto }) {
   if (!codigo?.trim()) return "Captura el código del proyecto.";
   if (!nombre?.trim()) return "Captura el nombre del proyecto.";

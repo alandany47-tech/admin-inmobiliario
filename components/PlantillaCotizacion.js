@@ -19,9 +19,10 @@ function Campo({ label, valor }) {
 }
 
 // Colores literales (hex/rgba), no utilidades de paleta Tailwind: html2canvas
-// no soporta lab()/oklch() (ver nota en SolicitudPagoPDF.js).
+// no soporta lab()/oklch() (ver nota en SolicitudPagoPDF.js). El color de
+// acento es el del proyecto (proyectos.color_primario) cuando la cotización
+// tiene proyecto asociado; si es cotización libre, cae al color global.
 function HojaCotizacion({ cotizacion, config, hojaRef }) {
-  const colorPrimario = config?.color_primario || "#0f172a";
   const {
     folio,
     clienteNombre,
@@ -37,6 +38,7 @@ function HojaCotizacion({ cotizacion, config, hojaRef }) {
     montoMensualidad,
     saldoEntrega,
   } = cotizacion;
+  const colorPrimario = proyecto?.color_primario || config?.color_primario || "#0f172a";
 
   return (
     <div ref={hojaRef} className="flex w-[816px] flex-col bg-white p-10 text-black">
