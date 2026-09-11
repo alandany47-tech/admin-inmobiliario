@@ -31,10 +31,10 @@ export async function cambiarEstadoSolicitud(solicitudId, nuevoEstado) {
   }
 
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("solicitudes_pago")
-    .update({ estado: nuevoEstado })
-    .eq("id", solicitudId);
+  const { error } = await supabase.rpc("autorizar_solicitud", {
+    p_solicitud_id: solicitudId,
+    p_nuevo_estado: nuevoEstado,
+  });
 
   if (error) {
     return { error: `No se pudo actualizar el estado: ${error.message}` };

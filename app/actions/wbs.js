@@ -9,6 +9,34 @@ import { normalizarPartidaWbs } from "@/lib/wbs";
 // - Vista de detalle por partida con el listado de solicitudes que la componen.
 
 /**
+ * IDs de wbs_catalog que ya tienen dinero real "Pagado" asociado, ya sea
+ * directo (solicitudes_pago.wbs_catalog_id) o vía reparto de gasto
+ * corporativo (solicitud_reparto_corporativo). Estas partidas no deben
+ * poder renombrarse ni desactivarse.
+ */
+async function wbsTienePagosAsociados(supabase, ids) {
+  if (!ids?.length) return new Set();
+
+  const [{ data: directos, error: errorDirectos }, { data: repartidos, error: errorRepartidos }] =
+    await Promise.all([
+      supabase.from("solicitudes_pago").select("wbs_catalog_id").in("wbs_catalog_id", ids).eq("estado", "Pagado"),
+      supabase
+        .from("solicitud_reparto_corporativo")
+        .select("wbs_id, solicitudes_pago!inner(estado)")
+        .in("wbs_id", ids)
+        .eq("solicitudes_pago.estado", "Pagado"),
+    ]);
+
+  if (errorDirectos || errorRepartidos) {
+    throw new Error(errorDirectos?.message || errorRepartidos?.message);
+  }
+
+  const idsConPago = new Set((directos ?? []).map((p) => p.wbs_catalog_id));
+  (repartidos ?? []).forEach((r) => idsConPago.add(r.wbs_id));
+  return idsConPago;
+}
+
+/**
  * Lista el catálogo WBS (entradas generales y específicas por proyecto),
  * incluyendo presupuesto/ejercido/disponible de wbs_presupuesto_resumen para
  * que el combobox de SolicitudPagoForm pueda alertar si una solicitud excede
@@ -119,16 +147,14 @@ export async function renombrarPartidaWbs(id, categoria, partida) {
   }
 
   const supabase = await createClient();
-  const { count, error: errorConteo } = await supabase
-    .from("solicitudes_pago")
-    .select("id", { count: "exact", head: true })
-    .eq("wbs_catalog_id", id)
-    .eq("estado", "Pagado");
-
-  if (errorConteo) {
-    return { error: `No se pudo validar la partida: ${errorConteo.message}` };
+  let tienePagos;
+  try {
+    tienePagos = await wbsTienePagosAsociados(supabase, [id]);
+  } catch (e) {
+    return { error: `No se pudo validar la partida: ${e.message}` };
   }
-  if (count > 0) {
+
+  if (tienePagos.has(id)) {
     return { error: "No se puede renombrar: tiene solicitudes pagadas asociadas." };
   }
 
@@ -199,17 +225,13 @@ export async function previsualizarImportWbs(proyectoId, filas) {
   let noVienen = [];
   if (faltantes.length > 0) {
     const ids = faltantes.map((w) => w.id);
-    const { data: pagos, error: errorPagos } = await supabase
-      .from("solicitudes_pago")
-      .select("wbs_catalog_id")
-      .in("wbs_catalog_id", ids)
-      .eq("estado", "Pagado");
-
-    if (errorPagos) {
-      return { error: `No se pudo validar pagos asociados: ${errorPagos.message}` };
+    let idsConPago;
+    try {
+      idsConPago = await wbsTienePagosAsociados(supabase, ids);
+    } catch (e) {
+      return { error: `No se pudo validar pagos asociados: ${e.message}` };
     }
 
-    const idsConPago = new Set((pagos ?? []).map((p) => p.wbs_catalog_id));
     noVienen = faltantes.map((w) => ({
       id: w.id,
       categoria: w.categoria,

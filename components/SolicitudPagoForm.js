@@ -74,6 +74,7 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
   const [form, setForm] = useState(FORM_VACIO);
   const [partidas, setPartidas] = useState([partidaVacia()]);
   const [aplicaIva, setAplicaIva] = useState(true);
+  const [esCorporativo, setEsCorporativo] = useState(false);
   const [folioPreview, setFolioPreview] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
@@ -278,6 +279,7 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
       wbsCategoria: form.wbsCategoria,
       wbsPartida: form.wbsPartida,
       wbsCatalogId: form.wbsCatalogId,
+      esCorporativo,
       partidas: partidasValidas,
       aplicaIva,
       subtotal,
@@ -304,6 +306,7 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
     setForm(FORM_VACIO);
     setPartidas([partidaVacia()]);
     setAplicaIva(true);
+    setEsCorporativo(false);
     setProveedorId("");
     setProveedorBusqueda("");
     setProveedorNuevo(PROVEEDOR_NUEVO_VACIO);
@@ -549,9 +552,33 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
 
         {/* Clasificación WBS */}
         <section className="flex flex-col gap-4">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-            Clasificación WBS
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              Clasificación WBS
+            </h2>
+            <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+              <input
+                type="checkbox"
+                checked={esCorporativo}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setEsCorporativo(checked);
+                  if (checked) {
+                    setForm((f) => ({ ...f, wbsCategoria: "", wbsPartida: "", wbsCatalogId: null }));
+                    setWbsBusqueda("");
+                  }
+                }}
+              />
+              Gasto corporativo
+            </label>
+          </div>
+
+          {esCorporativo ? (
+            <p className="rounded border border-dashed border-black/[.08] px-3 py-2.5 text-sm text-zinc-500 dark:border-white/[.145] dark:text-zinc-400">
+              Este gasto se pagará sin partida WBS asignada. Tesorería lo repartirá entre 2-4 partidas
+              destino una vez pagado.
+            </p>
+          ) : (
           <div className="relative flex flex-col gap-1.5 sm:max-w-md" ref={wbsBoxRef}>
             <label className={labelClase}>Partida WBS</label>
             {!form.proyectoId ? (
@@ -611,8 +638,9 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
               </>
             )}
           </div>
+          )}
 
-          {excedePresupuesto && (
+          {!esCorporativo && excedePresupuesto && (
             <p className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
               <AlertTriangle size={14} />
               El total de esta solicitud ({formatoMXN(total)}) excede el disponible presupuestal de la

@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Search, CheckCircle2, UserPlus, Loader2, Eye, EyeOff } from "lucide-react";
-import { actualizarRolUsuario, actualizarEstatusUsuario, crearUsuario } from "@/app/actions/auth";
+import { actualizarRolUsuario, actualizarEstatusUsuario, actualizarFirmaZona, crearUsuario } from "@/app/actions/auth";
 
 const NOMBRES_ROL = {
   SOLICITANTE: "Solicitante",
@@ -62,6 +62,21 @@ export default function PanelPermisos({ perfiles: perfilesIniciales, perfilActua
 
     setPerfiles((filas) => filas.map((f) => (f.id === id ? { ...f, rol } : f)));
     notificar("Rol actualizado correctamente");
+  }
+
+  async function cambiarZonaFirma(id, zona) {
+    setError("");
+    setGuardandoId(id);
+    const resultado = await actualizarFirmaZona(id, zona || null);
+    setGuardandoId(null);
+
+    if (resultado.error) {
+      setError(resultado.error);
+      return;
+    }
+
+    setPerfiles((filas) => filas.map((f) => (f.id === id ? { ...f, firma_zona: zona || null } : f)));
+    notificar("Zona de firma actualizada correctamente");
   }
 
   async function alternarEstatus(id, activoActual) {
@@ -182,6 +197,7 @@ export default function PanelPermisos({ perfiles: perfilesIniciales, perfilActua
             <tr>
               <th className="px-6 py-3">Usuario</th>
               <th className="px-6 py-3">Rol</th>
+              <th className="px-6 py-3">Zona de firma</th>
               <th className="px-6 py-3">Estatus</th>
               <th className="px-6 py-3 text-right">Acciones</th>
             </tr>
@@ -207,6 +223,18 @@ export default function PanelPermisos({ perfiles: perfilesIniciales, perfilActua
                           {etiqueta}
                         </option>
                       ))}
+                    </select>
+                  </td>
+                  <td className="px-6 py-3">
+                    <select
+                      value={p.firma_zona ?? ""}
+                      disabled={guardandoId === p.id}
+                      onChange={(e) => cambiarZonaFirma(p.id, e.target.value)}
+                      className="rounded-md border border-black/[.08] bg-transparent px-2 py-1 text-xs font-semibold outline-none focus:border-zinc-400 disabled:opacity-50 dark:border-white/[.145] dark:focus:border-zinc-600"
+                    >
+                      <option value="">Ninguna</option>
+                      <option value="izquierda">Izquierda</option>
+                      <option value="derecha">Derecha</option>
                     </select>
                   </td>
                   <td className="px-6 py-3">

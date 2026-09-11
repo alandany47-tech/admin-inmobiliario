@@ -8,9 +8,10 @@
  * `proyecto` no trae logo (cotización libre, o proyecto sin branding
  * cargado) solo se muestra el logo DIPZ. Colores literales, no utilidades de
  * paleta Tailwind: html2canvas no soporta lab()/oklch() (ver nota en
- * SolicitudPagoPDF.js).
+ * SolicitudPagoPDF.js). `logoEmpresaUrl` (opcional, de configuracion_empresa)
+ * agrega un tercer bloque de logo, global a toda la empresa.
  */
-export default function EncabezadoDualLogo({ configDipz, proyecto }) {
+export default function EncabezadoDualLogo({ configDipz, proyecto, logoEmpresaUrl }) {
   return (
     <div className="flex items-center gap-4">
       <div className="flex flex-col">
@@ -40,6 +41,14 @@ export default function EncabezadoDualLogo({ configDipz, proyecto }) {
               <span className="text-[10px] font-semibold tracking-[0.15em] text-[#52525c]">{proyecto.nombre}</span>
             )}
           </div>
+        </>
+      )}
+
+      {logoEmpresaUrl && (
+        <>
+          <div className="h-8 w-px bg-[rgba(0,0,0,0.2)]" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoEmpresaUrl} alt="Logo empresa" className="h-10 w-auto object-contain" crossOrigin="anonymous" />
         </>
       )}
     </div>

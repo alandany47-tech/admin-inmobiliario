@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CheckCircle2, Upload } from "lucide-react";
 import { actualizarConfiguracionPlantilla } from "@/app/actions/plantillas";
 import { subirLogoProyecto, actualizarColoresProyecto } from "@/app/actions/proyectos";
+import { subirLogoEmpresa } from "@/app/actions/configuracionEmpresa";
 
 const NOMBRES_CLAVE = {
   RECIBO_PAGO: "Recibo de Pago",
@@ -273,10 +274,74 @@ function LogoColorProyecto({ proyecto, onActualizado }) {
   );
 }
 
+/** Logo global de empresa (distinto del logo DIPZ por documento y del logo por proyecto): se muestra junto a ambos en el header del PDF. */
+function LogoEmpresa({ configuracionEmpresa, onActualizado }) {
+  const [subiendo, setSubiendo] = useState(false);
+  const [error, setError] = useState("");
+
+  async function subir(archivo) {
+    if (!archivo) return;
+    setSubiendo(true);
+    setError("");
+
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    const resultado = await subirLogoEmpresa(formData);
+
+    setSubiendo(false);
+    if (resultado.error) {
+      setError(resultado.error);
+      return;
+    }
+
+    onActualizado({ ...configuracionEmpresa, logo_empresa_url: resultado.url });
+  }
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-900">
+      <div>
+        <h4 className="text-sm font-semibold text-black dark:text-zinc-50">Logo de empresa</h4>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          Se muestra en el encabezado del PDF de Solicitud de Pago, junto al logo DIPZ y al del proyecto.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-4">
+        {configuracionEmpresa?.logo_empresa_url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={configuracionEmpresa.logo_empresa_url}
+            alt=""
+            className="h-9 w-auto rounded border border-black/[.08] object-contain dark:border-white/[.145]"
+          />
+        )}
+        <label className="flex cursor-pointer items-center gap-1.5 rounded border border-black/[.08] px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-black/[.04] dark:border-white/[.145] dark:text-blue-400 dark:hover:bg-white/[.06]">
+          <Upload size={12} />
+          {subiendo ? "Subiendo…" : configuracionEmpresa?.logo_empresa_url ? "Reemplazar logo" : "Subir logo"}
+          <input
+            type="file"
+            accept="image/png"
+            className="hidden"
+            disabled={subiendo}
+            onChange={(e) => subir(e.target.files?.[0])}
+          />
+        </label>
+      </div>
+
+      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+    </div>
+  );
+}
+
 /** Panel de configuración visual de las plantillas PDF, agrupadas por categoría, más el logo/color propio de cada proyecto. */
-export default function PanelConfiguracionPlantillas({ plantillas: plantillasIniciales, proyectos: proyectosIniciales }) {
+export default function PanelConfiguracionPlantillas({
+  plantillas: plantillasIniciales,
+  proyectos: proyectosIniciales,
+  configuracionEmpresa: configuracionEmpresaInicial,
+}) {
   const [plantillas, setPlantillas] = useState(plantillasIniciales);
   const [proyectos, setProyectos] = useState(proyectosIniciales);
+  const [configuracionEmpresa, setConfiguracionEmpresa] = useState(configuracionEmpresaInicial);
   const [categoriaActiva, setCategoriaActiva] = useState(CATEGORIAS[0].id);
 
   const categoria = CATEGORIAS.find((c) => c.id === categoriaActiva) ?? CATEGORIAS[0];
@@ -312,6 +377,8 @@ export default function PanelConfiguracionPlantillas({ plantillas: plantillasIni
           />
         ))}
       </div>
+
+      <LogoEmpresa configuracionEmpresa={configuracionEmpresa} onActualizado={setConfiguracionEmpresa} />
 
       <div className="flex flex-col gap-3">
         <div>

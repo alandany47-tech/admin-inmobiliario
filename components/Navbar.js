@@ -21,6 +21,8 @@ import {
   Sun,
   Table,
   TrendingUp,
+  Upload,
+  UserCircle,
   Users,
   Users2,
   Wallet,
@@ -42,6 +44,8 @@ const ENLACES = [
   { href: "/wbs", label: "Presupuesto WBS", icon: Wallet },
   { href: "/historial", label: "Historial", icon: Table },
   { href: "/configuracion/plantillas", label: "Plantillas PDF", icon: Settings },
+  { href: "/configuracion/importar-historico", label: "Importar Histórico", icon: Upload },
+  { href: "/perfil", label: "Mi Perfil", icon: UserCircle },
 ];
 
 const NOMBRES_ROL = {

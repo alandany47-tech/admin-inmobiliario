@@ -178,3 +178,75 @@ export async function actualizarEstatusUsuario(id, activo) {
   revalidatePath("/configuracion/permisos");
   return { ok: true };
 }
+
+const ZONAS_FIRMA_VALIDAS = ["izquierda", "derecha", null];
+
+/** Fija la zona de firma (izquierda/derecha/ninguna) de un usuario en el PDF (solo ADMIN). */
+export async function actualizarFirmaZona(id, zona) {
+  const zonaNormalizada = zona || null;
+  if (!ZONAS_FIRMA_VALIDAS.includes(zonaNormalizada)) {
+    return { error: "Zona de firma no válida." };
+  }
+
+  const perfilActual = await getPerfilActual();
+  if (!perfilActual || perfilActual.rol !== "ADMIN") {
+    return { error: "No autorizado." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("perfiles_usuario")
+    .update({ firma_zona: zonaNormalizada, updated_at: new Date().toISOString() })
+    .eq("id", id);
+
+  if (error) {
+    return { error: `No se pudo actualizar la zona de firma: ${error.message}` };
+  }
+
+  revalidatePath("/configuracion/permisos");
+  return { ok: true };
+}
+
+/**
+ * Sube la imagen de firma del usuario autenticado (sello visual, sin validez
+ * legal) y la guarda en su perfil vía RPC security definer, ya que la
+ * policy de UPDATE de perfiles_usuario solo permite escribir a un ADMIN.
+ */
+export async function subirMiFirma(formData) {
+  const archivo = formData.get("archivo");
+  if (!archivo || archivo.size === 0) {
+    return { error: "Selecciona un archivo." };
+  }
+  if (archivo.type !== "image/png") {
+    return { error: "La firma debe ser un archivo PNG." };
+  }
+
+  const perfilActual = await getPerfilActual();
+  if (!perfilActual) {
+    return { error: "No autorizado." };
+  }
+
+  const supabase = await createClient();
+  const ruta = `${perfilActual.id}/${Date.now()}-${archivo.name}`;
+
+  const { error: errorSubida } = await supabase.storage
+    .from("firmas-usuarios")
+    .upload(ruta, archivo, { upsert: true });
+
+  if (errorSubida) {
+    return { error: `No se pudo subir la firma: ${errorSubida.message}` };
+  }
+
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("firmas-usuarios").getPublicUrl(ruta);
+
+  const { error: errorRpc } = await supabase.rpc("actualizar_mi_firma", { p_firma_url: publicUrl });
+
+  if (errorRpc) {
+    return { error: `No se pudo guardar la firma: ${errorRpc.message}` };
+  }
+
+  revalidatePath("/perfil");
+  return { ok: true, url: publicUrl };
+}

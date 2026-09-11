@@ -59,6 +59,7 @@ export async function crearSolicitudPago(payload) {
     wbsCategoria,
     wbsPartida,
     wbsCatalogId,
+    esCorporativo,
     partidas,
     aplicaIva,
     subtotal,
@@ -93,7 +94,7 @@ export async function crearSolicitudPago(payload) {
     return { error: "Selecciona o registra un proveedor." };
   }
 
-  if (wbsCatalogId) {
+  if (!esCorporativo && wbsCatalogId) {
     const { data: wbsResumen } = await supabase
       .from("wbs_presupuesto_resumen")
       .select("disponible, partida, codigo")
@@ -116,9 +117,10 @@ export async function crearSolicitudPago(payload) {
       metodo_pago: metodoPago,
       solicitante,
       num_factura: numFactura || null,
-      wbs_categoria: wbsCategoria || null,
-      wbs_partida: wbsPartida || null,
-      wbs_catalog_id: wbsCatalogId || null,
+      es_corporativo: !!esCorporativo,
+      wbs_categoria: esCorporativo ? null : wbsCategoria || null,
+      wbs_partida: esCorporativo ? null : wbsPartida || null,
+      wbs_catalog_id: esCorporativo ? null : wbsCatalogId || null,
       partidas,
       aplica_iva: aplicaIva,
       subtotal,
@@ -153,4 +155,39 @@ export async function getSolicitudPorId(id) {
   }
 
   return data;
+}
+
+/**
+ * Firmas de autorización aplicables a una solicitud: un usuario por cada
+ * `firma_zona` asignada (izquierda/derecha), con su imagen de firma y si ya
+ * autorizó esta solicitud en particular. Es un sello de imagen sin validez
+ * legal, no una firma digital.
+ */
+export async function getFirmasParaSolicitud(solicitudId) {
+  const supabase = await createClient();
+
+  const [{ data: firmantes, error: errorFirmantes }, { data: autorizaciones, error: errorAutorizaciones }] =
+    await Promise.all([
+      supabase
+        .from("perfiles_usuario")
+        .select("id, nombre, firma_imagen_url, firma_zona")
+        .not("firma_zona", "is", null)
+        .order("firma_zona", { ascending: true }),
+      supabase.from("solicitud_autorizaciones").select("usuario_id").eq("solicitud_id", solicitudId),
+    ]);
+
+  if (errorFirmantes || errorAutorizaciones) {
+    console.error(
+      "Error al consultar firmas de la solicitud:",
+      errorFirmantes?.message || errorAutorizaciones?.message
+    );
+    return [];
+  }
+
+  const idsAutorizaron = new Set((autorizaciones ?? []).map((a) => a.usuario_id));
+
+  return (firmantes ?? []).map((f) => ({
+    ...f,
+    autorizo: idsAutorizaron.has(f.id),
+  }));
 }

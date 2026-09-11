@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Download } from "lucide-react";
 import { getConfiguracionPlantilla } from "@/app/actions/plantillas";
+import { getConfiguracionEmpresa } from "@/app/actions/configuracionEmpresa";
+import { getFirmasParaSolicitud } from "@/app/actions/solicitudes";
 import EncabezadoDualLogo from "@/components/EncabezadoDualLogo";
 
 function formatoMXN(valor) {
@@ -28,7 +30,51 @@ function Campo({ label, valor }) {
 // proyecto asociado; si no, cae al color global de configuracion_plantillas.
 // Un único acento en toda la hoja (líneas finas + total), no bloques de
 // color distintos por fila.
-function HojaSolicitud({ solicitud, config, hojaRef }) {
+function ZonaFirmas({ firmas }) {
+  if (!firmas?.length) return null;
+
+  const porZona = { izquierda: null, derecha: null };
+  for (const f of firmas) {
+    if (f.firma_zona === "izquierda" || f.firma_zona === "derecha") porZona[f.firma_zona] = f;
+  }
+  if (!porZona.izquierda && !porZona.derecha) return null;
+
+  return (
+    <div className="mt-10 flex flex-col gap-2 border-t border-[rgba(0,0,0,0.08)] pt-6">
+      <div className="grid grid-cols-2 gap-8">
+        {["izquierda", "derecha"].map((zona) => {
+          const firma = porZona[zona];
+          return (
+            <div key={zona} className="flex flex-col items-center gap-1.5">
+              <div className="flex h-14 items-end justify-center">
+                {firma?.autorizo && firma.firma_imagen_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={firma.firma_imagen_url}
+                    alt={`Firma ${firma.nombre}`}
+                    className="h-14 w-auto object-contain"
+                    crossOrigin="anonymous"
+                  />
+                ) : firma ? (
+                  <span className="text-[11px] italic text-[#a1a1aa]">Pendiente de autorización</span>
+                ) : null}
+              </div>
+              <div className="h-px w-full bg-[rgba(0,0,0,0.6)]" />
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#52525c]">
+                {firma?.nombre || ""}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-center text-[8px] text-[#a1a1aa]">
+        Sello de imagen sin validez legal; no constituye una firma digital.
+      </p>
+    </div>
+  );
+}
+
+function HojaSolicitud({ solicitud, config, logoEmpresaUrl, firmas, hojaRef }) {
   const partidas = solicitud.partidas ?? [];
   const proyecto = solicitud.proyectos;
   const colorPrimario = proyecto?.color_primario || config?.color_primario || "#0f172a";
@@ -39,7 +85,7 @@ function HojaSolicitud({ solicitud, config, hojaRef }) {
 
       <div className="flex flex-col px-12 pb-12 pt-8">
         <div className="flex items-start justify-between pb-6">
-          <EncabezadoDualLogo configDipz={config} proyecto={proyecto} />
+          <EncabezadoDualLogo configDipz={config} proyecto={proyecto} logoEmpresaUrl={logoEmpresaUrl} />
           <div className="flex flex-col items-end gap-0.5">
             <span className="text-[22px] font-bold uppercase tracking-wide text-[#18181b]">Solicitud de Pago</span>
             <span className="font-mono text-[11px] text-[#52525c]">{solicitud.folio}</span>
@@ -111,6 +157,8 @@ function HojaSolicitud({ solicitud, config, hojaRef }) {
           <p className="mt-10 text-[10px] leading-relaxed text-[#8a8a94]">{config.terminos_condiciones}</p>
         )}
 
+        <ZonaFirmas firmas={firmas} />
+
         <div className="mt-10 flex items-center justify-center gap-3 border-t border-[rgba(0,0,0,0.06)] pt-5">
           <div className="h-1 w-1 rounded-full" style={{ backgroundColor: colorPrimario }} />
           <p className="text-center text-[10px] text-[#8a8a94]">
@@ -132,12 +180,15 @@ function HojaSolicitud({ solicitud, config, hojaRef }) {
  * Cuenta/Recibo, para que las 4 plantillas se vean consistentes.
  */
 export async function generarPdfBlob(solicitud) {
-  const [config, { default: jsPDF }, { default: html2canvas }, { createRoot }] = await Promise.all([
-    getConfiguracionPlantilla("SOLICITUD_PAGO"),
-    import("jspdf"),
-    import("html2canvas"),
-    import("react-dom/client"),
-  ]);
+  const [config, configEmpresa, firmas, { default: jsPDF }, { default: html2canvas }, { createRoot }] =
+    await Promise.all([
+      getConfiguracionPlantilla("SOLICITUD_PAGO"),
+      getConfiguracionEmpresa(),
+      getFirmasParaSolicitud(solicitud.id),
+      import("jspdf"),
+      import("html2canvas"),
+      import("react-dom/client"),
+    ]);
 
   const contenedor = document.createElement("div");
   contenedor.style.position = "fixed";
@@ -147,7 +198,15 @@ export async function generarPdfBlob(solicitud) {
 
   const hojaRef = { current: null };
   const root = createRoot(contenedor);
-  root.render(<HojaSolicitud solicitud={solicitud} config={config} hojaRef={hojaRef} />);
+  root.render(
+    <HojaSolicitud
+      solicitud={solicitud}
+      config={config}
+      logoEmpresaUrl={configEmpresa?.logo_empresa_url}
+      firmas={firmas}
+      hojaRef={hojaRef}
+    />
+  );
 
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
@@ -192,10 +251,14 @@ function descargarBlob(blob, nombreArchivo) {
 export default function SolicitudPagoPDF({ solicitud }) {
   const [generando, setGenerando] = useState(false);
   const [config, setConfig] = useState(null);
+  const [configEmpresa, setConfigEmpresa] = useState(null);
+  const [firmas, setFirmas] = useState([]);
 
   useEffect(() => {
     getConfiguracionPlantilla("SOLICITUD_PAGO").then(setConfig);
-  }, []);
+    getConfiguracionEmpresa().then(setConfigEmpresa);
+    getFirmasParaSolicitud(solicitud.id).then(setFirmas);
+  }, [solicitud.id]);
 
   async function descargarPDF() {
     setGenerando(true);
@@ -215,7 +278,12 @@ export default function SolicitudPagoPDF({ solicitud }) {
         <Download size={16} /> {generando ? "Generando…" : "Descargar PDF"}
       </button>
 
-      <HojaSolicitud solicitud={solicitud} config={config} />
+      <HojaSolicitud
+        solicitud={solicitud}
+        config={config}
+        logoEmpresaUrl={configEmpresa?.logo_empresa_url}
+        firmas={firmas}
+      />
     </div>
   );
 }
