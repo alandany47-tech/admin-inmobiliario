@@ -141,7 +141,9 @@ export async function getSolicitudPorId(id) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("solicitudes_pago")
-    .select("*, proyectos(codigo, nombre), proveedores(razon_social, rfc, datos_bancarios)")
+    .select(
+      "*, proyectos(codigo, nombre, logo_proyecto_url, color_primario), proveedores(razon_social, rfc, datos_bancarios)"
+    )
     .eq("id", id)
     .single();
 

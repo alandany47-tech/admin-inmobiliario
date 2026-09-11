@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Download } from "lucide-react";
+import { getConfiguracionPlantilla } from "@/app/actions/plantillas";
+import EncabezadoDualLogo from "@/components/EncabezadoDualLogo";
 
 function formatoMXN(valor) {
   return Number(valor).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -13,92 +15,109 @@ function formatoFecha(fecha) {
 
 function Campo({ label, valor }) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="font-semibold uppercase tracking-wide text-[#71717b]">{label}</span>
-      <span className="text-black">{valor}</span>
+    <div className="flex flex-col gap-1">
+      <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#8a8a94]">{label}</span>
+      <span className="text-[13px] font-medium text-black">{valor}</span>
     </div>
   );
 }
 
-function Resumen({ label, valor, destacado }) {
-  return (
-    <div
-      className={`flex items-center justify-between border-b border-[rgba(0,0,0,0.2)] px-3 py-1.5 last:border-b-0 ${
-        destacado ? "bg-black font-bold text-white" : ""
-      }`}
-    >
-      <span>{label}</span>
-      <span>{valor}</span>
-    </div>
-  );
-}
-
-// Usa colores literales (hex/rgba) en vez de utilidades de paleta Tailwind
-// (zinc-500, black/20, etc.): Tailwind v4 las define con progresive
-// enhancement a lab()/oklch(), y html2canvas no sabe parsear esas funciones
-// de color al generar el canvas para el PDF.
-function HojaSolicitud({ solicitud, hojaRef }) {
+// Colores literales (hex/rgba), no utilidades de paleta Tailwind: html2canvas
+// no soporta lab()/oklch() (ver nota en las demás plantillas). El color de
+// acento es por proyecto (proyectos.color_primario) si la solicitud tiene
+// proyecto asociado; si no, cae al color global de configuracion_plantillas.
+// Un único acento en toda la hoja (líneas finas + total), no bloques de
+// color distintos por fila.
+function HojaSolicitud({ solicitud, config, hojaRef }) {
   const partidas = solicitud.partidas ?? [];
+  const proyecto = solicitud.proyectos;
+  const colorPrimario = proyecto?.color_primario || config?.color_primario || "#0f172a";
 
   return (
-    <div ref={hojaRef} className="flex w-[816px] flex-col bg-white p-10 text-black">
-      <div className="flex items-center justify-between border-b-4 border-black pb-4">
-        <div className="flex flex-col">
-          <span className="text-3xl font-black tracking-tight">DIPZ</span>
-          <span className="text-[10px] font-semibold tracking-[0.2em] text-[#52525c]">
-            THE FUTURE OF REAL ESTATE
-          </span>
+    <div ref={hojaRef} className="flex w-[816px] flex-col bg-white text-black">
+      <div className="h-[6px] w-full" style={{ backgroundColor: colorPrimario }} />
+
+      <div className="flex flex-col px-12 pb-12 pt-8">
+        <div className="flex items-start justify-between pb-6">
+          <EncabezadoDualLogo configDipz={config} proyecto={proyecto} />
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="text-[22px] font-bold uppercase tracking-wide text-[#18181b]">Solicitud de Pago</span>
+            <span className="font-mono text-[11px] text-[#52525c]">{solicitud.folio}</span>
+            <span className="text-[10px] text-[#8a8a94]">{formatoFecha(solicitud.created_at)}</span>
+          </div>
         </div>
-        <div className="flex flex-col items-end">
-          <span className="text-lg font-bold uppercase tracking-wide">Solicitud de Pago</span>
-          <span className="font-mono text-sm">{solicitud.folio}</span>
+
+        <div className="grid grid-cols-3 gap-x-8 gap-y-4 rounded-xl bg-[#fafafa] p-6 text-xs">
+          <Campo
+            label="Proyecto"
+            valor={`${solicitud.proyectos?.codigo ?? ""} — ${solicitud.proyectos?.nombre ?? ""}`}
+          />
+          <Campo label="Proveedor" valor={solicitud.proveedores?.razon_social} />
+          <Campo label="Método de pago" valor={solicitud.metodo_pago} />
+          <Campo label="Solicitante" valor={solicitud.solicitante} />
+          <Campo label="# Factura" valor={solicitud.num_factura || "—"} />
+          <Campo label="Fecha programada" valor={formatoFecha(solicitud.fecha_programada)} />
+          <Campo label="RFC proveedor" valor={solicitud.proveedores?.rfc || "—"} />
+          <Campo label="WBS categoría" valor={solicitud.wbs_categoria || "—"} />
+          <Campo label="WBS partida" valor={solicitud.wbs_partida || "—"} />
         </div>
-      </div>
 
-      <div className="grid grid-cols-4 gap-x-6 gap-y-3 border-b border-[rgba(0,0,0,0.2)] py-4 text-xs">
-        <Campo label="Fecha" valor={formatoFecha(solicitud.created_at)} />
-        <Campo
-          label="Proyecto"
-          valor={`${solicitud.proyectos?.codigo ?? ""} — ${solicitud.proyectos?.nombre ?? ""}`}
-        />
-        <Campo label="Proveedor" valor={solicitud.proveedores?.razon_social} />
-        <Campo label="Método de Pago" valor={solicitud.metodo_pago} />
-        <Campo label="Solicitante" valor={solicitud.solicitante} />
-        <Campo label="# Factura" valor={solicitud.num_factura || "—"} />
-        <Campo label="Fecha Programada" valor={formatoFecha(solicitud.fecha_programada)} />
-        <Campo label="RFC Proveedor" valor={solicitud.proveedores?.rfc || "—"} />
-        <Campo label="WBS Categoría" valor={solicitud.wbs_categoria || "—"} />
-        <Campo label="WBS Partida" valor={solicitud.wbs_partida || "—"} />
-        <Campo label="Estado" valor={solicitud.estado} />
-      </div>
+        {partidas.length > 0 && (
+          <div className="mt-8 flex flex-col">
+            <div
+              className="grid grid-cols-[0.6fr_2.4fr_1fr_1fr] gap-2 px-1 pb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#8a8a94]"
+              style={{ borderBottom: `2px solid ${colorPrimario}` }}
+            >
+              <span>Cant.</span>
+              <span>Descripción</span>
+              <span className="text-right">Precio unitario</span>
+              <span className="text-right">Subtotal</span>
+            </div>
+            {partidas.map((p, i) => (
+              <div
+                key={i}
+                className="grid grid-cols-[0.6fr_2.4fr_1fr_1fr] items-center gap-2 px-1 py-2.5 text-[11px]"
+                style={i === partidas.length - 1 ? undefined : { borderBottom: "1px solid rgba(0,0,0,0.06)" }}
+              >
+                <span className="text-[#27272a]">{p.cantidad}</span>
+                <span className="font-medium text-[#27272a]">{p.descripcion}</span>
+                <span className="text-right tabular-nums text-[#52525c]">{formatoMXN(p.precio_unitario)}</span>
+                <span className="text-right tabular-nums font-semibold">{formatoMXN(p.subtotal)}</span>
+              </div>
+            ))}
+          </div>
+        )}
 
-      <table className="mt-6 w-full border-collapse text-xs">
-        <thead>
-          <tr className="bg-black text-white">
-            <th className="border border-black px-3 py-2 text-left">Cantidad</th>
-            <th className="border border-black px-3 py-2 text-left">Descripción</th>
-            <th className="border border-black px-3 py-2 text-right">Precio Unitario</th>
-            <th className="border border-black px-3 py-2 text-right">Subtotal</th>
-          </tr>
-        </thead>
-        <tbody>
-          {partidas.map((p, i) => (
-            <tr key={i}>
-              <td className="border border-black px-3 py-2">{p.cantidad}</td>
-              <td className="border border-black px-3 py-2">{p.descripcion}</td>
-              <td className="border border-black px-3 py-2 text-right">
-                {formatoMXN(p.precio_unitario)}
-              </td>
-              <td className="border border-black px-3 py-2 text-right">{formatoMXN(p.subtotal)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        <div className="mt-8 flex justify-end">
+          <div className="flex w-80 flex-col overflow-hidden rounded-xl border border-[rgba(0,0,0,0.08)]">
+            <div className="flex items-center justify-between px-5 py-2.5 text-[12px]">
+              <span className="text-[#52525c]">Subtotal</span>
+              <span className="font-medium tabular-nums">{formatoMXN(solicitud.subtotal)}</span>
+            </div>
+            <div className="flex items-center justify-between border-t border-[rgba(0,0,0,0.06)] px-5 py-2.5 text-[12px]">
+              <span className="text-[#52525c]">IVA (16%)</span>
+              <span className="font-medium tabular-nums">{formatoMXN(solicitud.iva)}</span>
+            </div>
+            <div className="flex items-center justify-between border-t border-[rgba(0,0,0,0.06)] px-5 py-3">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#52525c]">Total</span>
+              <span className="text-[18px] font-bold tabular-nums" style={{ color: colorPrimario }}>
+                {formatoMXN(solicitud.total)}
+              </span>
+            </div>
+          </div>
+        </div>
 
-      <div className="mt-4 flex w-64 flex-col self-end border border-black text-xs">
-        <Resumen label="Subtotal" valor={formatoMXN(solicitud.subtotal)} />
-        <Resumen label="IVA (16%)" valor={formatoMXN(solicitud.iva)} />
-        <Resumen label="Total" valor={formatoMXN(solicitud.total)} destacado />
+        {config?.terminos_condiciones && (
+          <p className="mt-10 text-[10px] leading-relaxed text-[#8a8a94]">{config.terminos_condiciones}</p>
+        )}
+
+        <div className="mt-10 flex items-center justify-center gap-3 border-t border-[rgba(0,0,0,0.06)] pt-5">
+          <div className="h-1 w-1 rounded-full" style={{ backgroundColor: colorPrimario }} />
+          <p className="text-center text-[10px] text-[#8a8a94]">
+            {config?.pie_pagina || `Estado: ${solicitud.estado}`}
+          </p>
+          <div className="h-1 w-1 rounded-full" style={{ backgroundColor: colorPrimario }} />
+        </div>
       </div>
     </div>
   );
@@ -107,9 +126,14 @@ function HojaSolicitud({ solicitud, hojaRef }) {
 /**
  * Renderiza la hoja de una solicitud fuera de pantalla, la convierte a PDF
  * (jsPDF + html2canvas) y regresa un Blob listo para descargar o previsualizar.
+ * Consume dinámicamente configuracion_plantillas (clave SOLICITUD_PAGO) para
+ * logo/encabezado/color/pie de DIPZ, más el logo/color del proyecto (si
+ * aplica) vía `EncabezadoDualLogo` — igual que Cotización/Estado de
+ * Cuenta/Recibo, para que las 4 plantillas se vean consistentes.
  */
 export async function generarPdfBlob(solicitud) {
-  const [{ default: jsPDF }, { default: html2canvas }, { createRoot }] = await Promise.all([
+  const [config, { default: jsPDF }, { default: html2canvas }, { createRoot }] = await Promise.all([
+    getConfiguracionPlantilla("SOLICITUD_PAGO"),
     import("jspdf"),
     import("html2canvas"),
     import("react-dom/client"),
@@ -123,7 +147,7 @@ export async function generarPdfBlob(solicitud) {
 
   const hojaRef = { current: null };
   const root = createRoot(contenedor);
-  root.render(<HojaSolicitud solicitud={solicitud} hojaRef={hojaRef} />);
+  root.render(<HojaSolicitud solicitud={solicitud} config={config} hojaRef={hojaRef} />);
 
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
@@ -167,6 +191,11 @@ function descargarBlob(blob, nombreArchivo) {
 /** Vista de detalle/impresión de una solicitud de pago con el formato DIPZ. */
 export default function SolicitudPagoPDF({ solicitud }) {
   const [generando, setGenerando] = useState(false);
+  const [config, setConfig] = useState(null);
+
+  useEffect(() => {
+    getConfiguracionPlantilla("SOLICITUD_PAGO").then(setConfig);
+  }, []);
 
   async function descargarPDF() {
     setGenerando(true);
@@ -186,7 +215,7 @@ export default function SolicitudPagoPDF({ solicitud }) {
         <Download size={16} /> {generando ? "Generando…" : "Descargar PDF"}
       </button>
 
-      <HojaSolicitud solicitud={solicitud} />
+      <HojaSolicitud solicitud={solicitud} config={config} />
     </div>
   );
 }

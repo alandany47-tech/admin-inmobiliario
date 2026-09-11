@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { FileDown } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FileDown, ImagePlus, Trash2, X } from "lucide-react";
 import { getUnidadesDisponibles } from "@/app/actions/unidades";
-import { crearCotizacion } from "@/app/actions/cotizaciones";
+import { crearCotizacion, eliminarCotizacion, subirImagenCotizacionLibre } from "@/app/actions/cotizaciones";
 import { descargarCotizacionPdf } from "@/components/PlantillaCotizacion";
 
 function formatoMXN(valor) {
@@ -18,6 +18,10 @@ function redondear(valor) {
   return Math.round((Number(valor) || 0) * 100) / 100;
 }
 
+function clamp(valor, min, max) {
+  return Math.min(max, Math.max(min, valor));
+}
+
 const inputClase =
   "rounded border border-black/[.08] bg-transparent px-3 py-2 text-sm dark:border-white/[.145]";
 const labelClase = "text-sm font-medium text-zinc-700 dark:text-zinc-300";
@@ -25,10 +29,142 @@ const labelClase = "text-sm font-medium text-zinc-700 dark:text-zinc-300";
 const SIMULADOR_VACIO = {
   montoTotal: "",
   montoSeparacion: "",
-  porcentajeEnganche: "",
+  pctEnganche: 30,
+  pctEntrega: 0,
   plazoMeses: "",
-  saldoEntrega: "",
 };
+
+const COLOR_MENSUALIDADES = "#a1a1aa"; // zinc-400: color neutro para el tramo "automático" de la barra
+
+/**
+ * Barra de distribución del monto total: dos manijas arrastrables (o captura
+ * numérica directa) reparten Enganche / Mensualidades (automático) / Entrega
+ * como porcentajes. Una marca dentro del tramo de Enganche indica cuánto de
+ * ese porcentaje ya está cubierto por el monto de Separación.
+ */
+function BarraDistribucion({ total, pctEnganche, pctEntrega, montoSeparacion, colorPrimario, onCambiar }) {
+  const barraRef = useRef(null);
+  const pctMensualidades = Math.max(0, 100 - pctEnganche - pctEntrega);
+  const montoEnganche = redondear((total * pctEnganche) / 100);
+  const montoEntrega = redondear((total * pctEntrega) / 100);
+  const montoMensualidades = redondear(total - montoEnganche - montoEntrega);
+  const pctSeparacionEnBarra = total > 0 ? clamp((montoSeparacion / total) * 100, 0, pctEnganche) : 0;
+
+  function iniciarArrastre(manija) {
+    return (evento) => {
+      evento.preventDefault();
+      const barra = barraRef.current;
+      if (!barra) return;
+
+      function mover(e) {
+        const rect = barra.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const pct = clamp(((clientX - rect.left) / rect.width) * 100, 0, 100);
+        if (manija === "enganche") {
+          onCambiar({ pctEnganche: Math.round(clamp(pct, 0, 100 - pctEntrega)) });
+        } else {
+          onCambiar({ pctEntrega: Math.round(clamp(100 - pct, 0, 100 - pctEnganche)) });
+        }
+      }
+      function soltar() {
+        window.removeEventListener("pointermove", mover);
+        window.removeEventListener("pointerup", soltar);
+      }
+      window.addEventListener("pointermove", mover);
+      window.addEventListener("pointerup", soltar);
+    };
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div
+        ref={barraRef}
+        className="relative h-9 w-full touch-none overflow-hidden rounded-full border border-black/[.08] dark:border-white/[.145]"
+      >
+        <div className="absolute inset-y-0 left-0 flex items-center justify-center text-[11px] font-semibold text-white transition-[width]" style={{ width: `${pctEnganche}%`, backgroundColor: colorPrimario }}>
+          {pctEnganche >= 10 && `${pctEnganche}%`}
+        </div>
+        <div
+          className="absolute inset-y-0 flex items-center justify-center text-[11px] font-semibold text-white transition-[left,width]"
+          style={{ left: `${pctEnganche}%`, width: `${pctMensualidades}%`, backgroundColor: COLOR_MENSUALIDADES }}
+        >
+          {pctMensualidades >= 10 && `${pctMensualidades}%`}
+        </div>
+        <div
+          className="absolute inset-y-0 right-0 flex items-center justify-center text-[11px] font-semibold text-white transition-[width]"
+          style={{ width: `${pctEntrega}%`, backgroundColor: "#b45309" }}
+        >
+          {pctEntrega >= 10 && `${pctEntrega}%`}
+        </div>
+
+        {montoSeparacion > 0 && (
+          <div
+            className="absolute inset-y-0 w-[2px] bg-white/80 mix-blend-difference"
+            style={{ left: `${pctSeparacionEnBarra}%` }}
+            title={`Separación: ${formatoMXN(montoSeparacion)}`}
+          />
+        )}
+
+        <div
+          onPointerDown={iniciarArrastre("enganche")}
+          className="absolute top-1/2 z-10 h-6 w-3 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize rounded-full border-2 border-white bg-zinc-900 shadow dark:border-zinc-900 dark:bg-white"
+          style={{ left: `${pctEnganche}%` }}
+        />
+        <div
+          onPointerDown={iniciarArrastre("entrega")}
+          className="absolute top-1/2 z-10 h-6 w-3 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize rounded-full border-2 border-white bg-zinc-900 shadow dark:border-zinc-900 dark:bg-white"
+          style={{ left: `${100 - pctEntrega}%` }}
+        />
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 text-xs">
+        <div className="flex flex-col gap-1">
+          <span className="flex items-center gap-1.5 font-medium text-zinc-700 dark:text-zinc-300">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colorPrimario }} /> Enganche
+          </span>
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              min="0"
+              max="100"
+              className={`${inputClase} w-16 px-2 py-1`}
+              value={pctEnganche}
+              onChange={(e) => onCambiar({ pctEnganche: clamp(Math.round(Number(e.target.value) || 0), 0, 100 - pctEntrega) })}
+            />
+            <span className="text-zinc-500">%</span>
+          </div>
+          <span className="text-zinc-500 dark:text-zinc-400">{formatoMXN(montoEnganche)}</span>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <span className="flex items-center gap-1.5 font-medium text-zinc-700 dark:text-zinc-300">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: COLOR_MENSUALIDADES }} /> Mensualidades
+          </span>
+          <span className="py-1 text-zinc-500 dark:text-zinc-400">{pctMensualidades}% (automático)</span>
+          <span className="text-zinc-500 dark:text-zinc-400">{formatoMXN(montoMensualidades)}</span>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <span className="flex items-center gap-1.5 font-medium text-zinc-700 dark:text-zinc-300">
+            <span className="h-2 w-2 rounded-full bg-[#b45309]" /> Entrega
+          </span>
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              min="0"
+              max="100"
+              className={`${inputClase} w-16 px-2 py-1`}
+              value={pctEntrega}
+              onChange={(e) => onCambiar({ pctEntrega: clamp(Math.round(Number(e.target.value) || 0), 0, 100 - pctEnganche) })}
+            />
+            <span className="text-zinc-500">%</span>
+          </div>
+          <span className="text-zinc-500 dark:text-zinc-400">{formatoMXN(montoEntrega)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** Cotizador: sobre unidades del inventario o libre, con simulador de pagos y generación de PDF (guarda historial). */
 export default function Cotizador({ proyectos, historial: historialInicial }) {
@@ -47,6 +183,24 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [historial, setHistorial] = useState(historialInicial);
+  const [imagenLibreUrl, setImagenLibreUrl] = useState("");
+  const [subiendoImagen, setSubiendoImagen] = useState(false);
+  const [eliminandoId, setEliminandoId] = useState(null);
+
+  async function borrarDelHistorial(cotizacion) {
+    if (!window.confirm(`¿Eliminar la cotización ${cotizacion.folio}? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+    setEliminandoId(cotizacion.id);
+    const resultado = await eliminarCotizacion(cotizacion.id);
+    setEliminandoId(null);
+
+    if (resultado.error) {
+      setError(resultado.error);
+      return;
+    }
+    setHistorial((h) => h.filter((c) => c.id !== cotizacion.id));
+  }
 
   useEffect(() => {
     if (tipo !== "UNIDAD" || !proyectoId) return;
@@ -63,6 +217,22 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
     setTipo(valor);
     setUnidadId("");
     setSim(SIMULADOR_VACIO);
+    setImagenLibreUrl("");
+  }
+
+  async function subirImagenLibre(archivo) {
+    if (!archivo) return;
+    setSubiendoImagen(true);
+    setError("");
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    const resultado = await subirImagenCotizacionLibre(formData);
+    setSubiendoImagen(false);
+    if (resultado.error) {
+      setError(resultado.error);
+      return;
+    }
+    setImagenLibreUrl(resultado.url);
   }
 
   function seleccionarUnidad(id) {
@@ -74,23 +244,37 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
     }
   }
 
+  function actualizarBarra(cambios) {
+    setSim((s) => ({ ...s, ...cambios }));
+  }
+
   const proyecto = proyectos.find((p) => String(p.id) === proyectoId) ?? null;
   const unidad = unidades.find((u) => u.id === unidadId) ?? null;
+  const colorPrimario = proyecto?.color_primario || "#0f172a";
 
-  const montoEnganche = useMemo(() => {
-    const total = parseFloat(sim.montoTotal) || 0;
-    const pct = parseFloat(sim.porcentajeEnganche) || 0;
-    return redondear((total * pct) / 100);
-  }, [sim.montoTotal, sim.porcentajeEnganche]);
+  const montoTotal = parseFloat(sim.montoTotal) || 0;
+  const plazo = parseInt(sim.plazoMeses, 10) || 0;
 
+  // Enganche/Entrega son porcentajes del total repartidos en la barra; la
+  // Separación es un anticipo que ya cuenta como parte del Enganche (se
+  // resta de él, no del total aparte), por lo que Separación + Resto de
+  // Enganche + Mensualidades×Plazo + Entrega siempre suma exactamente el total.
+  const montoEnganche = useMemo(() => redondear((montoTotal * sim.pctEnganche) / 100), [montoTotal, sim.pctEnganche]);
+  const montoEntrega = useMemo(() => redondear((montoTotal * sim.pctEntrega) / 100), [montoTotal, sim.pctEntrega]);
+  const montoSeparacion = useMemo(
+    () => clamp(parseFloat(sim.montoSeparacion) || 0, 0, montoEnganche),
+    [sim.montoSeparacion, montoEnganche]
+  );
+  const restoEnganche = useMemo(() => redondear(montoEnganche - montoSeparacion), [montoEnganche, montoSeparacion]);
   const montoMensualidad = useMemo(() => {
-    const total = parseFloat(sim.montoTotal) || 0;
-    const separacion = parseFloat(sim.montoSeparacion) || 0;
-    const entrega = parseFloat(sim.saldoEntrega) || 0;
-    const plazo = parseInt(sim.plazoMeses, 10) || 0;
     if (plazo <= 0) return 0;
-    return redondear((total - separacion - montoEnganche - entrega) / plazo);
-  }, [sim.montoTotal, sim.montoSeparacion, sim.saldoEntrega, sim.plazoMeses, montoEnganche]);
+    return redondear((montoTotal - montoEnganche - montoEntrega) / plazo);
+  }, [montoTotal, montoEnganche, montoEntrega, plazo]);
+
+  const separacionExcedeEnganche = (parseFloat(sim.montoSeparacion) || 0) > montoEnganche && montoEnganche > 0;
+  // La imagen viene de la unidad de inventario (persistente) si se cotiza sobre
+  // una unidad existente; en cotización libre la sube el usuario a mano.
+  const imagenUrl = tipo === "UNIDAD" ? unidad?.imagen_url ?? null : imagenLibreUrl || null;
 
   async function guardarYGenerar(e) {
     e.preventDefault();
@@ -100,7 +284,7 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
       setError("Captura el nombre del cliente.");
       return;
     }
-    if (!(parseFloat(sim.montoTotal) > 0)) {
+    if (!(montoTotal > 0)) {
       setError("Captura el monto total a cotizar.");
       return;
     }
@@ -121,12 +305,13 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
       descripcionLibre: tipo === "LIBRE" ? descripcionLibre : "",
       montoTotal: sim.montoTotal,
       esquema,
-      montoSeparacion: sim.montoSeparacion,
-      porcentajeEnganche: sim.porcentajeEnganche,
+      montoSeparacion,
+      porcentajeEnganche: sim.pctEnganche,
       montoEnganche,
       plazoMeses: sim.plazoMeses,
       montoMensualidad,
-      saldoEntrega: sim.saldoEntrega,
+      saldoEntrega: montoEntrega,
+      imagenUrl,
     };
 
     const resultado = await crearCotizacion(payload);
@@ -145,12 +330,13 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
       descripcionLibre,
       montoTotal: sim.montoTotal,
       esquema,
-      montoSeparacion: sim.montoSeparacion,
+      montoSeparacion,
       montoEnganche,
-      porcentajeEnganche: sim.porcentajeEnganche,
+      porcentajeEnganche: sim.pctEnganche,
       plazoMeses: sim.plazoMeses,
       montoMensualidad,
-      saldoEntrega: sim.saldoEntrega,
+      saldoEntrega: montoEntrega,
+      imagenUrl,
     });
 
     setHistorial((h) => [
@@ -224,17 +410,58 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
                 ))}
               </select>
             </div>
+            {unidad?.imagen_url && (
+              <div className="col-span-2 flex items-center gap-3 rounded-lg border border-black/[.08] p-2 dark:border-white/[.145]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={unidad.imagen_url} alt={unidad.codigo_unidad} className="h-14 w-20 rounded object-cover" />
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Imagen de la unidad — se incluye en la cotización automáticamente.
+                </span>
+              </div>
+            )}
           </div>
         ) : (
-          <div className="flex flex-col gap-1.5">
-            <label className={labelClase}>Descripción</label>
-            <input
-              type="text"
-              placeholder="Ej. Local comercial planta baja, 45 m²"
-              className={inputClase}
-              value={descripcionLibre}
-              onChange={(e) => setDescripcionLibre(e.target.value)}
-            />
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClase}>Descripción</label>
+              <input
+                type="text"
+                placeholder="Ej. Local comercial planta baja, 45 m²"
+                className={inputClase}
+                value={descripcionLibre}
+                onChange={(e) => setDescripcionLibre(e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className={labelClase}>Foto o render (opcional)</label>
+              {imagenLibreUrl ? (
+                <div className="flex items-center gap-3 rounded-lg border border-black/[.08] p-2 dark:border-white/[.145]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={imagenLibreUrl} alt="Vista previa" className="h-14 w-20 rounded object-cover" />
+                  <span className="flex-1 text-xs text-zinc-500 dark:text-zinc-400">Se incluirá en la cotización.</span>
+                  <button
+                    type="button"
+                    onClick={() => setImagenLibreUrl("")}
+                    className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-full border border-dashed border-black/[.16] px-4 py-2 text-sm text-zinc-600 hover:bg-black/[.03] dark:border-white/[.2] dark:text-zinc-400 dark:hover:bg-white/[.04]">
+                  <ImagePlus size={15} />
+                  {subiendoImagen ? "Subiendo…" : "Subir foto o render (máx. 10 MB)"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    disabled={subiendoImagen}
+                    onChange={(e) => subirImagenLibre(e.target.files?.[0])}
+                  />
+                </label>
+              )}
+            </div>
           </div>
         )}
 
@@ -274,29 +501,6 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className={labelClase}>Separación</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              className={inputClase}
-              value={sim.montoSeparacion}
-              onChange={(e) => setSim((s) => ({ ...s, montoSeparacion: e.target.value }))}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className={labelClase}>Enganche (%)</label>
-            <input
-              type="number"
-              min="0"
-              max="100"
-              step="0.1"
-              className={inputClase}
-              value={sim.porcentajeEnganche}
-              onChange={(e) => setSim((s) => ({ ...s, porcentajeEnganche: e.target.value }))}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
             <label className={labelClase}>Plazo (meses)</label>
             <input
               type="number"
@@ -308,26 +512,63 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <label className={labelClase}>Saldo a Entrega</label>
+            <label className={labelClase}>Separación (incluida en el enganche)</label>
             <input
               type="number"
               min="0"
               step="0.01"
               className={inputClase}
-              value={sim.saldoEntrega}
-              onChange={(e) => setSim((s) => ({ ...s, saldoEntrega: e.target.value }))}
+              value={sim.montoSeparacion}
+              onChange={(e) => setSim((s) => ({ ...s, montoSeparacion: e.target.value }))}
             />
           </div>
         </div>
 
+        <div className="flex flex-col gap-3">
+          <label className={labelClase}>Distribución del monto total</label>
+          <BarraDistribucion
+            total={montoTotal}
+            pctEnganche={sim.pctEnganche}
+            pctEntrega={sim.pctEntrega}
+            montoSeparacion={montoSeparacion}
+            colorPrimario={colorPrimario}
+            onCambiar={actualizarBarra}
+          />
+          {separacionExcedeEnganche && (
+            <p className="text-xs text-amber-600 dark:text-amber-400">
+              La separación no puede exceder el enganche calculado; se ajustará a {formatoMXN(montoEnganche)}.
+            </p>
+          )}
+        </div>
+
         <div className="flex flex-col gap-2 rounded-lg border border-black/[.08] bg-black/[.02] p-4 text-sm dark:border-white/[.145] dark:bg-white/[.03]">
+          {montoSeparacion > 0 && (
+            <div className="flex justify-between">
+              <span className="text-zinc-600 dark:text-zinc-400">Separación</span>
+              <span className="font-medium">{formatoMXN(montoSeparacion)}</span>
+            </div>
+          )}
           <div className="flex justify-between">
-            <span className="text-zinc-600 dark:text-zinc-400">Enganche calculado</span>
-            <span className="font-medium">{formatoMXN(montoEnganche)}</span>
+            <span className="text-zinc-600 dark:text-zinc-400">
+              {montoSeparacion > 0 ? "Resto de enganche" : "Enganche"} ({sim.pctEnganche}%)
+            </span>
+            <span className="font-medium">{formatoMXN(restoEnganche)}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-zinc-600 dark:text-zinc-400">Mensualidad calculada</span>
-            <span className="font-medium">{formatoMXN(montoMensualidad)}</span>
+          {plazo > 0 && (
+            <div className="flex justify-between">
+              <span className="text-zinc-600 dark:text-zinc-400">{plazo} mensualidades de</span>
+              <span className="font-medium">{formatoMXN(montoMensualidad)}</span>
+            </div>
+          )}
+          {montoEntrega > 0 && (
+            <div className="flex justify-between">
+              <span className="text-zinc-600 dark:text-zinc-400">Saldo a entrega ({sim.pctEntrega}%)</span>
+              <span className="font-medium">{formatoMXN(montoEntrega)}</span>
+            </div>
+          )}
+          <div className="mt-1 flex justify-between border-t border-black/[.08] pt-2 font-semibold dark:border-white/[.145]">
+            <span>Total</span>
+            <span>{formatoMXN(montoTotal)}</span>
           </div>
         </div>
 
@@ -358,6 +599,7 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
                   <th className="px-4 py-3">Proyecto / Unidad</th>
                   <th className="px-4 py-3 text-right">Monto</th>
                   <th className="px-4 py-3">Fecha</th>
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
@@ -372,6 +614,17 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
                     </td>
                     <td className="px-4 py-3 text-right">{formatoMXN(c.monto_total)}</td>
                     <td className="px-4 py-3 text-zinc-600 dark:text-zinc-400">{formatoFecha(c.created_at)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => borrarDelHistorial(c)}
+                        disabled={eliminandoId === c.id}
+                        title="Eliminar del historial"
+                        className="text-zinc-400 hover:text-red-600 disabled:opacity-50 dark:hover:text-red-400"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

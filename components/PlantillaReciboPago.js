@@ -11,9 +11,9 @@ function formatoFecha(fecha) {
 
 function Campo({ label, valor }) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="font-semibold uppercase tracking-wide text-[#71717b]">{label}</span>
-      <span className="text-black">{valor}</span>
+    <div className="flex flex-col gap-1">
+      <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#8a8a94]">{label}</span>
+      <span className="text-[13px] font-medium text-black">{valor}</span>
     </div>
   );
 }
@@ -22,45 +22,55 @@ function Campo({ label, valor }) {
 // no soporta lab()/oklch() (ver nota en SolicitudPagoPDF.js). El color de
 // acento es dinámico y por proyecto: usa el color propio del proyecto
 // (proyectos.color_primario) si lo tiene, si no cae al color global de
-// configuracion_plantillas.
+// configuracion_plantillas. Un único acento en toda la hoja (líneas finas +
+// total), no bloques de color distintos.
 function HojaRecibo({ pago, config, hojaRef }) {
   const proyecto = pago.proyecto;
   const colorPrimario = proyecto?.color_primario || config?.color_primario || "#0f172a";
 
   return (
-    <div ref={hojaRef} className="flex w-[816px] flex-col bg-white p-10 text-black">
-      <div className="flex items-center justify-between border-b-4 pb-4" style={{ borderColor: colorPrimario }}>
-        <EncabezadoDualLogo configDipz={config} proyecto={proyecto} />
-        <div className="flex flex-col items-end">
-          <span className="text-lg font-bold uppercase tracking-wide">Recibo de Pago</span>
-          <span className="font-mono text-sm">{pago.folio}</span>
+    <div ref={hojaRef} className="flex w-[816px] flex-col bg-white text-black">
+      <div className="h-[6px] w-full" style={{ backgroundColor: colorPrimario }} />
+
+      <div className="flex flex-col px-12 pb-12 pt-8">
+        <div className="flex items-start justify-between pb-6">
+          <EncabezadoDualLogo configDipz={config} proyecto={proyecto} />
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="text-[22px] font-bold uppercase tracking-wide text-[#18181b]">Recibo de Pago</span>
+            <span className="font-mono text-[11px] text-[#52525c]">{pago.folio}</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-x-8 gap-y-4 rounded-xl bg-[#fafafa] p-6 text-xs">
+          <Campo label="Fecha de pago" valor={formatoFecha(pago.fecha)} />
+          <Campo label="Cliente" valor={pago.clienteNombre} />
+          <Campo label="Proyecto" valor={`${pago.proyectoCodigo ?? ""} — ${pago.proyectoNombre ?? ""}`} />
+          <Campo label="Unidad" valor={pago.unidadCodigo} />
+          <Campo label="Concepto" valor={pago.tipoPago} />
+          <Campo label="Método de pago" valor={pago.metodoPago} />
+        </div>
+
+        <div className="mt-8 flex justify-end">
+          <div className="flex w-80 flex-col overflow-hidden rounded-xl border border-[rgba(0,0,0,0.08)]">
+            <div className="flex items-center justify-between px-5 py-3">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#52525c]">Monto Pagado</span>
+              <span className="text-[20px] font-bold tabular-nums" style={{ color: colorPrimario }}>
+                {formatoMXN(pago.monto)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {config?.terminos_condiciones && (
+          <p className="mt-10 text-[10px] leading-relaxed text-[#8a8a94]">{config.terminos_condiciones}</p>
+        )}
+
+        <div className="mt-10 flex items-center justify-center gap-3 border-t border-[rgba(0,0,0,0.06)] pt-5">
+          <div className="h-1 w-1 rounded-full" style={{ backgroundColor: colorPrimario }} />
+          <p className="text-center text-[10px] text-[#8a8a94]">{config?.pie_pagina || "Gracias por su pago."}</p>
+          <div className="h-1 w-1 rounded-full" style={{ backgroundColor: colorPrimario }} />
         </div>
       </div>
-
-      <div className="grid grid-cols-2 gap-x-6 gap-y-3 border-b border-[rgba(0,0,0,0.2)] py-4 text-xs">
-        <Campo label="Fecha de Pago" valor={formatoFecha(pago.fecha)} />
-        <Campo label="Cliente" valor={pago.clienteNombre} />
-        <Campo label="Proyecto" valor={`${pago.proyectoCodigo ?? ""} — ${pago.proyectoNombre ?? ""}`} />
-        <Campo label="Unidad" valor={pago.unidadCodigo} />
-        <Campo label="Concepto" valor={pago.tipoPago} />
-        <Campo label="Método de Pago" valor={pago.metodoPago} />
-      </div>
-
-      <div className="mt-6 flex w-72 flex-col self-end border border-black text-xs">
-        <div
-          className="flex items-center justify-between px-3 py-2 font-bold text-white"
-          style={{ backgroundColor: colorPrimario }}
-        >
-          <span>Monto Pagado</span>
-          <span>{formatoMXN(pago.monto)}</span>
-        </div>
-      </div>
-
-      {config?.terminos_condiciones && (
-        <p className="mt-6 text-[10px] leading-relaxed text-[#71717b]">{config.terminos_condiciones}</p>
-      )}
-
-      <p className="mt-8 text-center text-xs text-[#52525c]">{config?.pie_pagina || "Gracias por su pago."}</p>
     </div>
   );
 }

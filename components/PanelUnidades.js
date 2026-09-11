@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Upload, X } from "lucide-react";
+import { ImagePlus, Plus, Upload, X } from "lucide-react";
 import {
   getUnidades,
   crearUnidad,
   actualizarUnidad,
   liberarUnidadVencida,
+  subirImagenUnidad,
 } from "@/app/actions/unidades";
 import { getClientes } from "@/app/actions/clientes";
 import ModalImportarUnidades from "@/components/ModalImportarUnidades";
@@ -66,6 +67,7 @@ export default function PanelUnidades({ proyectos }) {
 
   const [detalle, setDetalle] = useState(null);
   const [procesandoEstatusId, setProcesandoEstatusId] = useState(null);
+  const [subiendoImagenId, setSubiendoImagenId] = useState(null);
 
   const [venta, setVenta] = useState(null);
 
@@ -172,6 +174,24 @@ export default function PanelUnidades({ proyectos }) {
   function abrirVenta(unidad) {
     setVenta(unidad);
     setDetalle(null);
+  }
+
+  async function subirImagen(unidad, archivo) {
+    if (!archivo) return;
+    setSubiendoImagenId(unidad.id);
+    setError("");
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    const resultado = await subirImagenUnidad(unidad.id, unidad.proyecto_id, formData);
+    setSubiendoImagenId(null);
+
+    if (resultado.error) {
+      setError(resultado.error);
+      return;
+    }
+
+    setUnidades((filas) => filas.map((f) => (f.id === unidad.id ? { ...f, imagen_url: resultado.url } : f)));
+    setDetalle((d) => (d && d.id === unidad.id ? { ...d, imagen_url: resultado.url } : d));
   }
 
   async function liberarVencida(unidad) {
@@ -429,6 +449,28 @@ export default function PanelUnidades({ proyectos }) {
               >
                 <X size={18} />
               </button>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {detalle.imagen_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={detalle.imagen_url} alt={detalle.codigo_unidad} className="h-16 w-24 rounded-lg object-cover" />
+              ) : (
+                <div className="flex h-16 w-24 items-center justify-center rounded-lg border border-dashed border-black/[.16] text-[10px] text-zinc-400 dark:border-white/[.2]">
+                  Sin imagen
+                </div>
+              )}
+              <label className="flex cursor-pointer items-center gap-1.5 rounded-full border border-black/[.08] px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-black/[.04] dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]">
+                <ImagePlus size={14} />
+                {subiendoImagenId === detalle.id ? "Subiendo…" : detalle.imagen_url ? "Cambiar foto/render" : "Subir foto/render"}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  disabled={subiendoImagenId === detalle.id}
+                  onChange={(e) => subirImagen(detalle, e.target.files?.[0])}
+                />
+              </label>
             </div>
 
             <div className="flex flex-col gap-2 text-sm">

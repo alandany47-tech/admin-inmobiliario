@@ -11,9 +11,24 @@ function formatoFecha(fecha) {
 
 function Campo({ label, valor }) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="font-semibold uppercase tracking-wide text-[#71717b]">{label}</span>
-      <span className="text-black">{valor}</span>
+    <div className="flex flex-col gap-1">
+      <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#8a8a94]">{label}</span>
+      <span className="text-[13px] font-medium text-black">{valor}</span>
+    </div>
+  );
+}
+
+function Fila({ concepto, detalle, monto, ultima }) {
+  return (
+    <div
+      className="flex items-center justify-between px-1 py-3"
+      style={ultima ? undefined : { borderBottom: "1px solid rgba(0,0,0,0.08)" }}
+    >
+      <div className="flex flex-col">
+        <span className="text-[12px] font-medium text-[#27272a]">{concepto}</span>
+        {detalle && <span className="text-[10px] text-[#8a8a94]">{detalle}</span>}
+      </div>
+      <span className="text-[13px] font-semibold tabular-nums text-black">{monto}</span>
     </div>
   );
 }
@@ -21,7 +36,9 @@ function Campo({ label, valor }) {
 // Colores literales (hex/rgba), no utilidades de paleta Tailwind: html2canvas
 // no soporta lab()/oklch() (ver nota en SolicitudPagoPDF.js). El color de
 // acento es el del proyecto (proyectos.color_primario) cuando la cotización
-// tiene proyecto asociado; si es cotización libre, cae al color global.
+// tiene proyecto asociado; si es cotización libre, cae al color global. Se
+// usa un único acento en toda la hoja (líneas finas y el total), no bloques
+// de color distintos por fila, para un aspecto más limpio/"real estate".
 function HojaCotizacion({ cotizacion, config, hojaRef }) {
   const {
     folio,
@@ -37,80 +54,112 @@ function HojaCotizacion({ cotizacion, config, hojaRef }) {
     plazoMeses,
     montoMensualidad,
     saldoEntrega,
+    imagenUrl,
   } = cotizacion;
   const colorPrimario = proyecto?.color_primario || config?.color_primario || "#0f172a";
 
+  const separacion = Number(montoSeparacion) || 0;
+  const enganche = Number(montoEnganche) || 0;
+  const restoEnganche = Math.max(enganche - separacion, 0);
+  const plazo = Number(plazoMeses) || 0;
+  const mensualidad = Number(montoMensualidad) || 0;
+  const entrega = Number(saldoEntrega) || 0;
+
+  const filas = [
+    separacion > 0 && {
+      concepto: "Separación",
+      detalle: "Anticipo, se descuenta del enganche",
+      monto: formatoMXN(separacion),
+    },
+    enganche > 0 && {
+      concepto: separacion > 0 ? "Resto de enganche" : "Enganche",
+      detalle: `${Number(porcentajeEnganche).toLocaleString("es-MX")}% del total`,
+      monto: formatoMXN(restoEnganche),
+    },
+    plazo > 0 && {
+      concepto: "Mensualidades",
+      // El importe de la fila es el remanente exacto (Total − Enganche − Entrega), no
+      // mensualidad×plazo: ese producto puede quedar unos centavos desfasado por el
+      // redondeo de la mensualidad individual, y esta fila debe cuadrar con el Total.
+      detalle: `${plazo} pagos de ${formatoMXN(mensualidad)}`,
+      monto: formatoMXN(Math.max(Number(montoTotal) - enganche - entrega, 0)),
+    },
+    entrega > 0 && {
+      concepto: "Saldo a entrega",
+      detalle: null,
+      monto: formatoMXN(entrega),
+    },
+  ].filter(Boolean);
+
   return (
-    <div ref={hojaRef} className="flex w-[816px] flex-col bg-white p-10 text-black">
-      <div className="flex items-center justify-between border-b-4 pb-4" style={{ borderColor: colorPrimario }}>
-        <EncabezadoDualLogo configDipz={config} proyecto={proyecto} />
-        <div className="flex flex-col items-end">
-          <span className="text-lg font-bold uppercase tracking-wide">Cotización</span>
-          <span className="font-mono text-sm">{folio}</span>
-          <span className="text-xs text-[#52525c]">{formatoFecha(new Date())}</span>
+    <div ref={hojaRef} className="flex w-[816px] flex-col bg-white text-black">
+      <div className="h-[6px] w-full" style={{ backgroundColor: colorPrimario }} />
+
+      <div className="flex flex-col px-12 pb-12 pt-8">
+        <div className="flex items-start justify-between pb-6">
+          <EncabezadoDualLogo configDipz={config} proyecto={proyecto} />
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="text-[22px] font-bold uppercase tracking-wide text-[#18181b]">Cotización</span>
+            <span className="font-mono text-[11px] text-[#52525c]">{folio}</span>
+            <span className="text-[10px] text-[#8a8a94]">{formatoFecha(new Date())}</span>
+          </div>
+        </div>
+
+        {imagenUrl && (
+          <div className="mb-6 h-64 w-full overflow-hidden rounded-xl">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={imagenUrl} alt="" className="h-full w-full object-cover" crossOrigin="anonymous" />
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-x-8 gap-y-4 rounded-xl bg-[#fafafa] p-6 text-xs">
+          <Campo label="Cliente" valor={clienteNombre} />
+          <Campo label="Esquema" valor={esquema === "INVERSIONISTA" ? "Inversionista" : "Tradicional"} />
+          <Campo
+            label="Concepto"
+            valor={unidadCodigo ? `Unidad ${unidadCodigo}${proyecto?.nombre ? " — " + proyecto.nombre : ""}` : descripcionLibre || "Cotización libre"}
+          />
+          <Campo label="Monto total" valor={formatoMXN(montoTotal)} />
+        </div>
+
+        {filas.length > 0 && (
+          <div className="mt-8 flex flex-col">
+            <div
+              className="flex items-center justify-between px-1 pb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-[#8a8a94]"
+              style={{ borderBottom: `2px solid ${colorPrimario}` }}
+            >
+              <span>Concepto</span>
+              <span>Monto</span>
+            </div>
+            {filas.map((f, i) => (
+              <Fila key={f.concepto} {...f} ultima={i === filas.length - 1} />
+            ))}
+          </div>
+        )}
+
+        <div className="mt-8 flex justify-end">
+          <div className="flex w-80 flex-col overflow-hidden rounded-xl border border-[rgba(0,0,0,0.08)]">
+            <div className="flex items-center justify-between px-5 py-3">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#52525c]">Monto Total</span>
+              <span className="text-[20px] font-bold tabular-nums" style={{ color: colorPrimario }}>
+                {formatoMXN(montoTotal)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {config?.terminos_condiciones && (
+          <p className="mt-10 text-[10px] leading-relaxed text-[#8a8a94]">{config.terminos_condiciones}</p>
+        )}
+
+        <div className="mt-10 flex items-center justify-center gap-3 border-t border-[rgba(0,0,0,0.06)] pt-5">
+          <div className="h-1 w-1 rounded-full" style={{ backgroundColor: colorPrimario }} />
+          <p className="text-center text-[10px] text-[#8a8a94]">
+            {config?.pie_pagina || "Cotización sujeta a cambios sin previo aviso."}
+          </p>
+          <div className="h-1 w-1 rounded-full" style={{ backgroundColor: colorPrimario }} />
         </div>
       </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-b border-[rgba(0,0,0,0.2)] py-4 text-xs">
-        <Campo label="Cliente" valor={clienteNombre} />
-        <Campo label="Esquema" valor={esquema === "INVERSIONISTA" ? "Inversionista" : "Tradicional"} />
-        <Campo
-          label="Concepto"
-          valor={unidadCodigo ? `Unidad ${unidadCodigo}${proyecto?.nombre ? " — " + proyecto.nombre : ""}` : descripcionLibre || "Cotización libre"}
-        />
-        <Campo label="Monto Total" valor={formatoMXN(montoTotal)} />
-      </div>
-
-      <table className="mt-5 w-full border-collapse text-xs">
-        <thead>
-          <tr style={{ backgroundColor: colorPrimario }} className="text-white">
-            <th className="border border-black px-3 py-2 text-left">Concepto</th>
-            <th className="border border-black px-3 py-2 text-right">Monto</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td className="border border-black px-3 py-2">Separación</td>
-            <td className="border border-black px-3 py-2 text-right">{formatoMXN(montoSeparacion)}</td>
-          </tr>
-          <tr>
-            <td className="border border-black px-3 py-2">
-              Enganche ({Number(porcentajeEnganche).toLocaleString("es-MX")}%)
-            </td>
-            <td className="border border-black px-3 py-2 text-right">{formatoMXN(montoEnganche)}</td>
-          </tr>
-          <tr>
-            <td className="border border-black px-3 py-2">
-              {plazoMeses} mensualidades de {formatoMXN(montoMensualidad)}
-            </td>
-            <td className="border border-black px-3 py-2 text-right">
-              {formatoMXN(Number(montoMensualidad) * Number(plazoMeses))}
-            </td>
-          </tr>
-          <tr>
-            <td className="border border-black px-3 py-2">Saldo a Entrega</td>
-            <td className="border border-black px-3 py-2 text-right">{formatoMXN(saldoEntrega)}</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <div className="mt-6 flex w-72 flex-col self-end border border-black text-xs">
-        <div
-          className="flex items-center justify-between px-3 py-2 font-bold text-white"
-          style={{ backgroundColor: colorPrimario }}
-        >
-          <span>Monto Total</span>
-          <span>{formatoMXN(montoTotal)}</span>
-        </div>
-      </div>
-
-      {config?.terminos_condiciones && (
-        <p className="mt-6 text-[10px] leading-relaxed text-[#71717b]">{config.terminos_condiciones}</p>
-      )}
-
-      <p className="mt-8 text-center text-xs text-[#52525c]">
-        {config?.pie_pagina || "Cotización sujeta a cambios sin previo aviso."}
-      </p>
     </div>
   );
 }

@@ -232,6 +232,51 @@ export async function importarUnidadesMasivo(proyectoId, filas) {
   return { ok: true, importadas: data.length, invalidas };
 }
 
+const TIPOS_IMAGEN_VALIDOS = ["image/png", "image/jpeg", "image/webp"];
+
+/**
+ * Sube la foto/render de una unidad al bucket "renders-unidades" (ruta
+ * {proyecto_id}/{unidad_id}/..., persiste con el inventario) y guarda su URL
+ * pública. Esa imagen la reutiliza el Cotizador cuando se cotiza esa unidad
+ * (ver `descargarCotizacionPdf`/`Cotizador.js`).
+ */
+export async function subirImagenUnidad(unidadId, proyectoId, formData) {
+  const archivo = formData.get("archivo");
+  if (!archivo || archivo.size === 0) {
+    return { error: "Selecciona un archivo." };
+  }
+  if (!TIPOS_IMAGEN_VALIDOS.includes(archivo.type)) {
+    return { error: "La imagen debe ser PNG, JPG o WEBP." };
+  }
+
+  const supabase = await createClient();
+  const ruta = `${proyectoId}/${unidadId}/${Date.now()}-${archivo.name}`;
+
+  const { error: errorSubida } = await supabase.storage
+    .from("renders-unidades")
+    .upload(ruta, archivo, { upsert: true });
+
+  if (errorSubida) {
+    return { error: `No se pudo subir la imagen: ${errorSubida.message}` };
+  }
+
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("renders-unidades").getPublicUrl(ruta);
+
+  const { error: errorUpdate } = await supabase
+    .from("unidades")
+    .update({ imagen_url: publicUrl })
+    .eq("id", unidadId);
+
+  if (errorUpdate) {
+    return { error: `No se pudo guardar la referencia de la imagen: ${errorUpdate.message}` };
+  }
+
+  revalidatePath("/unidades");
+  return { ok: true, url: publicUrl };
+}
+
 /**
  * Libera una unidad 'APARTADA' cuyos 30 días de separación ya vencieron sin
  * liquidar el enganche ni firmar contrato: cancela el contrato de venta
