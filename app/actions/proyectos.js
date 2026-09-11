@@ -60,6 +60,44 @@ export async function getProyectosBranding() {
   return data;
 }
 
+/** Sube el logo del proyecto al bucket "logos-proyectos" y guarda su URL pública. */
+export async function subirLogoProyecto(proyectoId, formData) {
+  const archivo = formData.get("archivo");
+  if (!archivo || archivo.size === 0) {
+    return { error: "Selecciona un archivo." };
+  }
+  if (archivo.type !== "image/png") {
+    return { error: "El logo debe ser un archivo PNG." };
+  }
+
+  const supabase = await createClient();
+  const ruta = `${proyectoId}/${Date.now()}-${archivo.name}`;
+
+  const { error: errorSubida } = await supabase.storage
+    .from("logos-proyectos")
+    .upload(ruta, archivo, { upsert: true });
+
+  if (errorSubida) {
+    return { error: `No se pudo subir el logo: ${errorSubida.message}` };
+  }
+
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("logos-proyectos").getPublicUrl(ruta);
+
+  const { error: errorUpdate } = await supabase
+    .from("proyectos")
+    .update({ logo_proyecto_url: publicUrl })
+    .eq("id", proyectoId);
+
+  if (errorUpdate) {
+    return { error: `No se pudo guardar la referencia del logo: ${errorUpdate.message}` };
+  }
+
+  revalidatePath("/proyectos");
+  return { ok: true, url: publicUrl };
+}
+
 function validarDatosProyecto({ codigo, nombre, presupuesto }) {
   if (!codigo?.trim()) return "Captura el código del proyecto.";
   if (!nombre?.trim()) return "Captura el nombre del proyecto.";

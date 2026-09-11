@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Plus, Trash2, X } from "lucide-react";
-import { crearProyecto, actualizarProyecto, eliminarProyecto } from "@/app/actions/proyectos";
+import { Pencil, Plus, Trash2, Upload, X } from "lucide-react";
+import { crearProyecto, actualizarProyecto, eliminarProyecto, subirLogoProyecto } from "@/app/actions/proyectos";
 
 const FORM_VACIO = {
   codigo: "",
@@ -35,6 +35,7 @@ export default function GestionProyectos({ proyectosIniciales }) {
   const [form, setForm] = useState(FORM_VACIO);
   const [guardando, setGuardando] = useState(false);
   const [procesandoId, setProcesandoId] = useState(null);
+  const [subiendoLogo, setSubiendoLogo] = useState(false);
   const [error, setError] = useState("");
 
   function abrirNuevo() {
@@ -64,6 +65,28 @@ export default function GestionProyectos({ proyectosIniciales }) {
 
   function actualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
+  }
+
+  async function subirLogo(archivo) {
+    if (!archivo || modal === "nuevo") return;
+    setSubiendoLogo(true);
+    setError("");
+
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    const resultado = await subirLogoProyecto(modal.id, formData);
+
+    setSubiendoLogo(false);
+
+    if (resultado.error) {
+      setError(resultado.error);
+      return;
+    }
+
+    setForm((f) => ({ ...f, logoProyectoUrl: resultado.url }));
+    setProyectos((filas) =>
+      filas.map((f) => (f.id === modal.id ? { ...f, logoProyectoUrl: resultado.url } : f))
+    );
   }
 
   async function guardar(e) {
@@ -281,14 +304,34 @@ export default function GestionProyectos({ proyectosIniciales }) {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className={labelClase}>Logo del Proyecto (URL)</label>
-              <input
-                type="text"
-                placeholder="https://…"
-                className={inputClase}
-                value={form.logoProyectoUrl}
-                onChange={(e) => actualizarCampo("logoProyectoUrl", e.target.value)}
-              />
+              <label className={labelClase}>Logo del Proyecto (PNG)</label>
+              {modal === "nuevo" ? (
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Guarda el proyecto primero; podrás subir el logo al editarlo.
+                </p>
+              ) : (
+                <div className="flex items-center gap-3">
+                  {form.logoProyectoUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={form.logoProyectoUrl}
+                      alt="Logo actual"
+                      className="h-10 w-auto rounded border border-black/[.08] object-contain dark:border-white/[.145]"
+                    />
+                  )}
+                  <label className="flex cursor-pointer items-center gap-1.5 rounded border border-black/[.08] px-3 py-2 text-sm text-blue-600 hover:bg-black/[.04] dark:border-white/[.145] dark:text-blue-400 dark:hover:bg-white/[.06]">
+                    <Upload size={14} />
+                    {subiendoLogo ? "Subiendo…" : form.logoProyectoUrl ? "Reemplazar" : "Subir logo"}
+                    <input
+                      type="file"
+                      accept="image/png"
+                      className="hidden"
+                      disabled={subiendoLogo}
+                      onChange={(e) => subirLogo(e.target.files?.[0])}
+                    />
+                  </label>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
