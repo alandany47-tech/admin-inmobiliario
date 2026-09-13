@@ -454,7 +454,11 @@ export default function PanelUnidades({ proyectos }) {
             <div className="flex items-center gap-3">
               {detalle.imagen_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={detalle.imagen_url} alt={detalle.codigo_unidad} className="h-16 w-24 rounded-lg object-cover" />
+                <img
+                  src={detalle.imagen_url}
+                  alt={detalle.codigo_unidad}
+                  className="h-16 w-24 rounded-lg bg-zinc-50 object-contain dark:bg-zinc-900"
+                />
               ) : (
                 <div className="flex h-16 w-24 items-center justify-center rounded-lg border border-dashed border-black/[.16] text-[10px] text-zinc-400 dark:border-white/[.2]">
                   Sin imagen

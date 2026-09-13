@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CheckCircle2, Upload } from "lucide-react";
-import { actualizarConfiguracionPlantilla } from "@/app/actions/plantillas";
+import { actualizarConfiguracionPlantilla, subirLogoPlantilla } from "@/app/actions/plantillas";
 import { subirLogoProyecto, actualizarColoresProyecto } from "@/app/actions/proyectos";
 import { subirLogoEmpresa } from "@/app/actions/configuracionEmpresa";
 
@@ -26,7 +26,6 @@ const labelClase = "text-sm font-medium text-zinc-700 dark:text-zinc-300";
 
 function FormularioPlantilla({ plantilla, onGuardado }) {
   const [form, setForm] = useState({
-    logoUrl: plantilla.logo_url ?? "",
     encabezadoLinea1: plantilla.encabezado_linea1 ?? "",
     encabezadoLinea2: plantilla.encabezado_linea2 ?? "",
     piePagina: plantilla.pie_pagina ?? "",
@@ -36,6 +35,8 @@ function FormularioPlantilla({ plantilla, onGuardado }) {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [guardado, setGuardado] = useState(false);
+  const [subiendoLogo, setSubiendoLogo] = useState(false);
+  const [errorLogo, setErrorLogo] = useState("");
 
   function actualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
@@ -58,6 +59,24 @@ function FormularioPlantilla({ plantilla, onGuardado }) {
     onGuardado(resultado.plantilla);
   }
 
+  async function subirLogo(archivo) {
+    if (!archivo) return;
+    setSubiendoLogo(true);
+    setErrorLogo("");
+
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    const resultado = await subirLogoPlantilla(plantilla.clave, formData);
+
+    setSubiendoLogo(false);
+    if (resultado.error) {
+      setErrorLogo(resultado.error);
+      return;
+    }
+
+    onGuardado(resultado.plantilla);
+  }
+
   return (
     <form
       onSubmit={guardar}
@@ -68,14 +87,29 @@ function FormularioPlantilla({ plantilla, onGuardado }) {
       </h3>
 
       <div className="flex flex-col gap-1.5">
-        <label className={labelClase}>Logo DIPZ (URL)</label>
-        <input
-          type="text"
-          placeholder="https://…"
-          className={inputClase}
-          value={form.logoUrl}
-          onChange={(e) => actualizarCampo("logoUrl", e.target.value)}
-        />
+        <label className={labelClase}>Logo DIPZ</label>
+        <div className="flex items-center gap-3">
+          {plantilla.logo_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={plantilla.logo_url}
+              alt=""
+              className="h-9 w-auto rounded border border-black/[.08] object-contain dark:border-white/[.145]"
+            />
+          )}
+          <label className="flex cursor-pointer items-center gap-1.5 rounded border border-black/[.08] px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-black/[.04] dark:border-white/[.145] dark:text-blue-400 dark:hover:bg-white/[.06]">
+            <Upload size={12} />
+            {subiendoLogo ? "Subiendo…" : plantilla.logo_url ? "Reemplazar logo" : "Subir logo"}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              disabled={subiendoLogo}
+              onChange={(e) => subirLogo(e.target.files?.[0])}
+            />
+          </label>
+        </div>
+        {errorLogo && <p className="text-xs text-red-600 dark:text-red-400">{errorLogo}</p>}
       </div>
 
       <div className="grid grid-cols-2 gap-3">

@@ -413,7 +413,11 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
             {unidad?.imagen_url && (
               <div className="col-span-2 flex items-center gap-3 rounded-lg border border-black/[.08] p-2 dark:border-white/[.145]">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={unidad.imagen_url} alt={unidad.codigo_unidad} className="h-14 w-20 rounded object-cover" />
+                <img
+                  src={unidad.imagen_url}
+                  alt={unidad.codigo_unidad}
+                  className="h-14 w-20 rounded bg-zinc-50 object-contain dark:bg-zinc-900"
+                />
                 <span className="text-xs text-zinc-500 dark:text-zinc-400">
                   Imagen de la unidad — se incluye en la cotización automáticamente.
                 </span>
@@ -438,7 +442,11 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
               {imagenLibreUrl ? (
                 <div className="flex items-center gap-3 rounded-lg border border-black/[.08] p-2 dark:border-white/[.145]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={imagenLibreUrl} alt="Vista previa" className="h-14 w-20 rounded object-cover" />
+                  <img
+                    src={imagenLibreUrl}
+                    alt="Vista previa"
+                    className="h-14 w-20 rounded bg-zinc-50 object-contain dark:bg-zinc-900"
+                  />
                   <span className="flex-1 text-xs text-zinc-500 dark:text-zinc-400">Se incluirá en la cotización.</span>
                   <button
                     type="button"
@@ -451,7 +459,7 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
               ) : (
                 <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-full border border-dashed border-black/[.16] px-4 py-2 text-sm text-zinc-600 hover:bg-black/[.03] dark:border-white/[.2] dark:text-zinc-400 dark:hover:bg-white/[.04]">
                   <ImagePlus size={15} />
-                  {subiendoImagen ? "Subiendo…" : "Subir foto o render (máx. 10 MB)"}
+                  {subiendoImagen ? "Subiendo…" : "Subir foto o render (máx. 25 MB)"}
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
