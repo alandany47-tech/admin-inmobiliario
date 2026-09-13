@@ -8,6 +8,7 @@ import { useTheme } from "next-themes";
 import {
   Building2,
   Calculator,
+  ChevronRight,
   FileText,
   HandCoins,
   Home,
@@ -22,30 +23,67 @@ import {
   Table,
   TrendingUp,
   Upload,
-  UserCircle,
   Users,
   Users2,
   Wallet,
 } from "lucide-react";
 import { cerrarSesion } from "@/app/actions/auth";
 
-const ENLACES = [
-  { href: "/dashboard", label: "Dashboard", icon: TrendingUp },
-  { href: "/proyectos", label: "Proyectos", icon: Building2 },
-  { href: "/unidades", label: "Unidades", icon: Home },
-  { href: "/cotizaciones", label: "Cotizador", icon: Calculator },
-  { href: "/solicitud", label: "Solicitudes", icon: FileText },
-  { href: "/autorizaciones", label: "Autorizaciones", icon: ShieldCheck },
-  { href: "/tesoreria", label: "Tesorería", icon: Landmark },
-  { href: "/cobranza/clientes", label: "Cartera de Clientes", icon: Users2 },
-  { href: "/cobranza/pagos", label: "Captura de Pagos", icon: HandCoins },
-  { href: "/proveedores", label: "Proveedores", icon: Users },
-  { href: "/control-maestro", label: "Control Maestro", icon: LayoutDashboard },
-  { href: "/wbs", label: "Presupuesto WBS", icon: Wallet },
-  { href: "/historial", label: "Historial", icon: Table },
-  { href: "/configuracion/plantillas", label: "Plantillas PDF", icon: Settings },
-  { href: "/configuracion/importar-historico", label: "Importar Histórico", icon: Upload },
-  { href: "/perfil", label: "Mi Perfil", icon: UserCircle },
+/**
+ * Menú agrupado por secciones (no solo por conveniencia visual: cada sección
+ * es la unidad natural para restringir accesos por rol más adelante — un
+ * ítem puede declarar `roles: [...]` para limitarse a esos roles, y una
+ * sección se oculta sola si ninguno de sus ítems queda visible). Hoy solo
+ * "Roles y Accesos" usa esa restricción (ADMIN); el resto queda sin
+ * declarar, es decir visible a cualquier rol autenticado.
+ */
+const SECCIONES = [
+  {
+    id: "principal",
+    nombre: "Principal",
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: TrendingUp },
+      { href: "/historial", label: "Historial", icon: Table },
+    ],
+  },
+  {
+    id: "proyectos",
+    nombre: "Proyectos y Ventas",
+    items: [
+      { href: "/proyectos", label: "Proyectos", icon: Building2 },
+      { href: "/unidades", label: "Unidades", icon: Home },
+      { href: "/cotizaciones", label: "Cotizador", icon: Calculator },
+    ],
+  },
+  {
+    id: "cobranza",
+    nombre: "Cobranza",
+    items: [
+      { href: "/cobranza/clientes", label: "Cartera de Clientes", icon: Users2 },
+      { href: "/cobranza/pagos", label: "Captura de Pagos", icon: HandCoins },
+    ],
+  },
+  {
+    id: "tesoreria",
+    nombre: "Tesorería",
+    items: [
+      { href: "/solicitud", label: "Solicitudes", icon: FileText },
+      { href: "/autorizaciones", label: "Autorizaciones", icon: ShieldCheck },
+      { href: "/tesoreria", label: "Tesorería", icon: Landmark },
+      { href: "/control-maestro", label: "Control Maestro", icon: LayoutDashboard },
+      { href: "/wbs", label: "Presupuesto WBS", icon: Wallet },
+      { href: "/proveedores", label: "Proveedores", icon: Users },
+    ],
+  },
+  {
+    id: "configuracion",
+    nombre: "Configuración",
+    items: [
+      { href: "/configuracion/plantillas", label: "Plantillas PDF", icon: Settings },
+      { href: "/configuracion/importar-historico", label: "Importar Histórico", icon: Upload },
+      { href: "/configuracion/permisos", label: "Roles y Accesos", icon: KeyRound, roles: ["ADMIN"] },
+    ],
+  },
 ];
 
 const NOMBRES_ROL = {
@@ -55,15 +93,21 @@ const NOMBRES_ROL = {
   ADMIN: "Administrador",
 };
 
-/** Navegación lateral global del sistema DIPZ. */
+function iniciales(nombre) {
+  const partes = (nombre || "").trim().split(/\s+/);
+  return ((partes[0]?.[0] ?? "") + (partes[1]?.[0] ?? "")).toUpperCase() || "?";
+}
+
+/** Navegación lateral global del sistema DIPZ, agrupada por secciones. */
 export default function Navbar({ perfil }) {
   const pathname = usePathname();
   const { resolvedTheme, setTheme } = useTheme();
   const [montado, setMontado] = useState(false);
-  const enlaces =
-    perfil?.rol === "ADMIN"
-      ? [...ENLACES, { href: "/configuracion/permisos", label: "Roles y Accesos", icon: KeyRound }]
-      : ENLACES;
+
+  const secciones = SECCIONES.map((s) => ({
+    ...s,
+    items: s.items.filter((item) => !item.roles || item.roles.includes(perfil?.rol)),
+  })).filter((s) => s.items.length > 0);
 
   // Excepción necesaria: solo así se evita el desfase de hidratación entre
   // el render del servidor (sin tema resuelto) y el del cliente.
@@ -71,7 +115,7 @@ export default function Navbar({ perfil }) {
   useEffect(() => setMontado(true), []);
 
   return (
-    <nav className="flex w-60 shrink-0 flex-col gap-8 border-r border-black/[.08] bg-white px-5 py-6 dark:border-white/[.145] dark:bg-zinc-900">
+    <nav className="flex w-64 shrink-0 flex-col gap-6 overflow-y-auto border-r border-black/[.08] bg-white px-5 py-6 dark:border-white/[.145] dark:bg-zinc-900">
       <div className="flex flex-col gap-1.5 rounded-lg bg-zinc-900 px-3 py-3">
         <Image
           src="/logo.png"
@@ -86,29 +130,38 @@ export default function Navbar({ perfil }) {
         </span>
       </div>
 
-      <ul className="flex flex-col gap-1">
-        {enlaces.map(({ href, label, icon: Icon }) => {
-          const activo = pathname === href || pathname.startsWith(`${href}/`);
+      <div className="flex flex-col gap-5">
+        {secciones.map((seccion) => (
+          <div key={seccion.id} className="flex flex-col gap-1">
+            <span className="px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-400 dark:text-zinc-500">
+              {seccion.nombre}
+            </span>
+            <ul className="flex flex-col gap-1">
+              {seccion.items.map(({ href, label, icon: Icon }) => {
+                const activo = pathname === href || pathname.startsWith(`${href}/`);
 
-          return (
-            <li key={href}>
-              <Link
-                href={href}
-                className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  activo
-                    ? "bg-foreground text-background"
-                    : "text-zinc-600 hover:bg-black/[.04] dark:text-zinc-400 dark:hover:bg-white/[.06]"
-                }`}
-              >
-                <Icon size={17} />
-                {label}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+                return (
+                  <li key={href}>
+                    <Link
+                      href={href}
+                      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                        activo
+                          ? "bg-foreground text-background"
+                          : "text-zinc-600 hover:bg-black/[.04] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+                      }`}
+                    >
+                      <Icon size={17} />
+                      {label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </div>
 
-      <div className="mt-auto flex flex-col gap-1">
+      <div className="mt-auto flex flex-col gap-2">
         <button
           type="button"
           onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
@@ -119,11 +172,35 @@ export default function Navbar({ perfil }) {
         </button>
 
         {perfil && (
-          <div className="flex items-center justify-between gap-2 border-t border-black/[.08] px-3 pt-3 dark:border-white/[.145]">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">{perfil.nombre}</p>
-              <p className="text-xs text-zinc-500">{NOMBRES_ROL[perfil.rol] ?? perfil.rol}</p>
-            </div>
+          <div className="flex items-center gap-1.5 border-t border-black/[.08] pt-3 dark:border-white/[.145]">
+            <Link
+              href="/perfil"
+              className="group flex min-w-0 flex-1 items-center gap-2.5 rounded-xl px-2 py-2 transition-colors hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+            >
+              {perfil.foto_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={perfil.foto_url}
+                  alt=""
+                  className="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-black/[.08] dark:ring-white/[.145]"
+                />
+              ) : (
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-xs font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900">
+                  {iniciales(perfil.nombre)}
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-200">{perfil.nombre}</p>
+                <p className="truncate text-xs text-zinc-500">
+                  {NOMBRES_ROL[perfil.rol] ?? perfil.rol}
+                  {perfil.puesto ? ` · ${perfil.puesto}` : ""}
+                </p>
+              </div>
+              <ChevronRight
+                size={15}
+                className="shrink-0 text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100"
+              />
+            </Link>
             <button
               type="button"
               onClick={() => cerrarSesion()}

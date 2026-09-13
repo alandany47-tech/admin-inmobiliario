@@ -23,7 +23,7 @@ export async function getContratosVenta() {
   const { data, error } = await supabase
     .from("contratos_venta")
     .select(
-      "id, monto_total_venta, fecha_contrato, estatus, esquema_venta, contrato_firmado, monto_enganche_pactado, monto_enganche_pagado, fecha_limite_apartado, dia_pago_mensual, proyectos(codigo, nombre, logo_proyecto_url, color_primario, color_secundario), unidades(codigo_unidad), clientes(id, nombre, rfc, email)"
+      "id, monto_total_venta, fecha_contrato, estatus, esquema_venta, contrato_firmado, monto_enganche_pactado, monto_enganche_pagado, fecha_limite_apartado, dia_pago_mensual, proyectos(codigo, nombre, logo_proyecto_url, logo_compacto_url, color_primario, color_secundario), unidades(codigo_unidad), clientes(id, nombre, rfc, email)"
     )
     .order("fecha_contrato", { ascending: false });
 
@@ -499,7 +499,7 @@ export async function getDesglosePagosCliente(clienteId) {
   const { data, error } = await supabase
     .from("contratos_venta")
     .select(
-      "id, monto_total_venta, fecha_contrato, esquema_venta, contrato_firmado, unidades(codigo_unidad), proyectos(id, codigo, nombre, logo_proyecto_url, color_primario, color_secundario), planes_pago_cobranza(id, tipo_pago, monto_programado, monto_pagado, fecha_programada, fecha_pago, estatus, fase_plan, notas)"
+      "id, monto_total_venta, fecha_contrato, esquema_venta, contrato_firmado, unidades(codigo_unidad), proyectos(id, codigo, nombre, logo_proyecto_url, logo_compacto_url, color_primario, color_secundario), planes_pago_cobranza(id, tipo_pago, monto_programado, monto_pagado, fecha_programada, fecha_pago, estatus, fase_plan, notas)"
     )
     .eq("cliente_id", clienteId)
     .order("fecha_contrato", { ascending: false });

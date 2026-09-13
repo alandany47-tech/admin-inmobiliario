@@ -1,10 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Upload } from "lucide-react";
-import { actualizarConfiguracionPlantilla, subirLogoPlantilla } from "@/app/actions/plantillas";
-import { subirLogoProyecto, actualizarColoresProyecto } from "@/app/actions/proyectos";
-import { subirLogoEmpresa } from "@/app/actions/configuracionEmpresa";
+import { CheckCircle2 } from "lucide-react";
+import { actualizarConfiguracionPlantilla } from "@/app/actions/plantillas";
+import {
+  subirLogoProyecto,
+  eliminarLogoProyecto,
+  subirLogoCompactoProyecto,
+  eliminarLogoCompactoProyecto,
+  actualizarColoresProyecto,
+} from "@/app/actions/proyectos";
+import { subirLogoEmpresa, eliminarLogoEmpresa } from "@/app/actions/configuracionEmpresa";
+import UploaderImagenConEliminar from "@/components/UploaderImagenConEliminar";
 
 const NOMBRES_CLAVE = {
   RECIBO_PAGO: "Recibo de Pago",
@@ -26,8 +33,6 @@ const labelClase = "text-sm font-medium text-zinc-700 dark:text-zinc-300";
 
 function FormularioPlantilla({ plantilla, onGuardado }) {
   const [form, setForm] = useState({
-    encabezadoLinea1: plantilla.encabezado_linea1 ?? "",
-    encabezadoLinea2: plantilla.encabezado_linea2 ?? "",
     piePagina: plantilla.pie_pagina ?? "",
     colorPrimario: plantilla.color_primario ?? "#0f172a",
     terminosCondiciones: plantilla.terminos_condiciones ?? "",
@@ -35,8 +40,6 @@ function FormularioPlantilla({ plantilla, onGuardado }) {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [guardado, setGuardado] = useState(false);
-  const [subiendoLogo, setSubiendoLogo] = useState(false);
-  const [errorLogo, setErrorLogo] = useState("");
 
   function actualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
@@ -59,24 +62,6 @@ function FormularioPlantilla({ plantilla, onGuardado }) {
     onGuardado(resultado.plantilla);
   }
 
-  async function subirLogo(archivo) {
-    if (!archivo) return;
-    setSubiendoLogo(true);
-    setErrorLogo("");
-
-    const formData = new FormData();
-    formData.append("archivo", archivo);
-    const resultado = await subirLogoPlantilla(plantilla.clave, formData);
-
-    setSubiendoLogo(false);
-    if (resultado.error) {
-      setErrorLogo(resultado.error);
-      return;
-    }
-
-    onGuardado(resultado.plantilla);
-  }
-
   return (
     <form
       onSubmit={guardar}
@@ -85,53 +70,6 @@ function FormularioPlantilla({ plantilla, onGuardado }) {
       <h3 className="text-base font-semibold text-black dark:text-zinc-50">
         {NOMBRES_CLAVE[plantilla.clave] ?? plantilla.clave}
       </h3>
-
-      <div className="flex flex-col gap-1.5">
-        <label className={labelClase}>Logo DIPZ</label>
-        <div className="flex items-center gap-3">
-          {plantilla.logo_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={plantilla.logo_url}
-              alt=""
-              className="h-9 w-auto rounded border border-black/[.08] object-contain dark:border-white/[.145]"
-            />
-          )}
-          <label className="flex cursor-pointer items-center gap-1.5 rounded border border-black/[.08] px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-black/[.04] dark:border-white/[.145] dark:text-blue-400 dark:hover:bg-white/[.06]">
-            <Upload size={12} />
-            {subiendoLogo ? "Subiendo…" : plantilla.logo_url ? "Reemplazar logo" : "Subir logo"}
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="hidden"
-              disabled={subiendoLogo}
-              onChange={(e) => subirLogo(e.target.files?.[0])}
-            />
-          </label>
-        </div>
-        {errorLogo && <p className="text-xs text-red-600 dark:text-red-400">{errorLogo}</p>}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
-          <label className={labelClase}>Encabezado Línea 1</label>
-          <input
-            type="text"
-            className={inputClase}
-            value={form.encabezadoLinea1}
-            onChange={(e) => actualizarCampo("encabezadoLinea1", e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <label className={labelClase}>Encabezado Línea 2</label>
-          <input
-            type="text"
-            className={inputClase}
-            value={form.encabezadoLinea2}
-            onChange={(e) => actualizarCampo("encabezadoLinea2", e.target.value)}
-          />
-        </div>
-      </div>
 
       <div className="flex flex-col gap-1.5">
         <label className={labelClase}>Pie de Página</label>
@@ -194,31 +132,40 @@ function FormularioPlantilla({ plantilla, onGuardado }) {
   );
 }
 
-/** Editor rápido del logo y color de acento de un proyecto, usados en Recibo/Estado de Cuenta/Solicitud/Cotización de ese proyecto en vez del color global. */
+/** Editor rápido del logo (completo y compacto) y color de acento de un proyecto, usados en Recibo/Estado de Cuenta/Solicitud/Cotización de ese proyecto en vez del color global. */
 function LogoColorProyecto({ proyecto, onActualizado }) {
   const [colorPrimario, setColorPrimario] = useState(proyecto.color_primario ?? "#0f172a");
   const [colorSecundario, setColorSecundario] = useState(proyecto.color_secundario ?? "#2563eb");
-  const [subiendoLogo, setSubiendoLogo] = useState(false);
   const [guardandoColor, setGuardandoColor] = useState(false);
   const [guardado, setGuardado] = useState(false);
   const [error, setError] = useState("");
 
   async function subirLogo(archivo) {
-    if (!archivo) return;
-    setSubiendoLogo(true);
-    setError("");
-
     const formData = new FormData();
     formData.append("archivo", archivo);
     const resultado = await subirLogoProyecto(proyecto.id, formData);
+    if (!resultado.error) onActualizado({ ...proyecto, logo_proyecto_url: resultado.url });
+    return resultado;
+  }
 
-    setSubiendoLogo(false);
-    if (resultado.error) {
-      setError(resultado.error);
-      return;
-    }
+  async function eliminarLogo() {
+    const resultado = await eliminarLogoProyecto(proyecto.id);
+    if (!resultado.error) onActualizado({ ...proyecto, logo_proyecto_url: null });
+    return resultado;
+  }
 
-    onActualizado({ ...proyecto, logo_proyecto_url: resultado.url });
+  async function subirLogoCompacto(archivo) {
+    const formData = new FormData();
+    formData.append("archivo", archivo);
+    const resultado = await subirLogoCompactoProyecto(proyecto.id, formData);
+    if (!resultado.error) onActualizado({ ...proyecto, logo_compacto_url: resultado.url });
+    return resultado;
+  }
+
+  async function eliminarLogoCompacto() {
+    const resultado = await eliminarLogoCompactoProyecto(proyecto.id);
+    if (!resultado.error) onActualizado({ ...proyecto, logo_compacto_url: null });
+    return resultado;
   }
 
   async function guardarColores() {
@@ -244,29 +191,28 @@ function LogoColorProyecto({ proyecto, onActualizado }) {
         {proyecto.codigo} — {proyecto.nombre}
       </span>
 
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          {proyecto.logo_proyecto_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={proyecto.logo_proyecto_url}
-              alt=""
-              className="h-9 w-auto rounded border border-black/[.08] object-contain dark:border-white/[.145]"
-            />
-          )}
-          <label className="flex cursor-pointer items-center gap-1.5 rounded border border-black/[.08] px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-black/[.04] dark:border-white/[.145] dark:text-blue-400 dark:hover:bg-white/[.06]">
-            <Upload size={12} />
-            {subiendoLogo ? "Subiendo…" : proyecto.logo_proyecto_url ? "Reemplazar logo" : "Subir logo"}
-            <input
-              type="file"
-              accept="image/png"
-              className="hidden"
-              disabled={subiendoLogo}
-              onChange={(e) => subirLogo(e.target.files?.[0])}
-            />
-          </label>
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-zinc-500 dark:text-zinc-400">Logo completo</span>
+          <UploaderImagenConEliminar
+            url={proyecto.logo_proyecto_url}
+            onSubir={subirLogo}
+            onEliminar={eliminarLogo}
+            confirmarEliminar="¿Eliminar el logo de este proyecto?"
+          />
         </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-zinc-500 dark:text-zinc-400">Logo compacto / pie de página</span>
+          <UploaderImagenConEliminar
+            url={proyecto.logo_compacto_url}
+            onSubir={subirLogoCompacto}
+            onEliminar={eliminarLogoCompacto}
+            confirmarEliminar="¿Eliminar el logo compacto de este proyecto?"
+          />
+        </div>
+      </div>
 
+      <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-zinc-500 dark:text-zinc-400">Primario</span>
           <input
@@ -308,27 +254,20 @@ function LogoColorProyecto({ proyecto, onActualizado }) {
   );
 }
 
-/** Logo global de empresa (distinto del logo DIPZ por documento y del logo por proyecto): se muestra junto a ambos en el header del PDF. */
+/** Logo global de empresa (usado como logo principal en el encabezado de las 5 plantillas PDF, junto al logo del proyecto). */
 function LogoEmpresa({ configuracionEmpresa, onActualizado }) {
-  const [subiendo, setSubiendo] = useState(false);
-  const [error, setError] = useState("");
-
   async function subir(archivo) {
-    if (!archivo) return;
-    setSubiendo(true);
-    setError("");
-
     const formData = new FormData();
     formData.append("archivo", archivo);
     const resultado = await subirLogoEmpresa(formData);
+    if (!resultado.error) onActualizado({ ...configuracionEmpresa, logo_empresa_url: resultado.url });
+    return resultado;
+  }
 
-    setSubiendo(false);
-    if (resultado.error) {
-      setError(resultado.error);
-      return;
-    }
-
-    onActualizado({ ...configuracionEmpresa, logo_empresa_url: resultado.url });
+  async function eliminar() {
+    const resultado = await eliminarLogoEmpresa();
+    if (!resultado.error) onActualizado({ ...configuracionEmpresa, logo_empresa_url: null });
+    return resultado;
   }
 
   return (
@@ -336,33 +275,16 @@ function LogoEmpresa({ configuracionEmpresa, onActualizado }) {
       <div>
         <h4 className="text-sm font-semibold text-black dark:text-zinc-50">Logo de empresa</h4>
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          Se muestra en el encabezado del PDF de Solicitud de Pago, junto al logo DIPZ y al del proyecto.
+          Se muestra como logo principal en el encabezado de las 5 plantillas PDF, junto al del proyecto.
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4">
-        {configuracionEmpresa?.logo_empresa_url && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={configuracionEmpresa.logo_empresa_url}
-            alt=""
-            className="h-9 w-auto rounded border border-black/[.08] object-contain dark:border-white/[.145]"
-          />
-        )}
-        <label className="flex cursor-pointer items-center gap-1.5 rounded border border-black/[.08] px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-black/[.04] dark:border-white/[.145] dark:text-blue-400 dark:hover:bg-white/[.06]">
-          <Upload size={12} />
-          {subiendo ? "Subiendo…" : configuracionEmpresa?.logo_empresa_url ? "Reemplazar logo" : "Subir logo"}
-          <input
-            type="file"
-            accept="image/png"
-            className="hidden"
-            disabled={subiendo}
-            onChange={(e) => subir(e.target.files?.[0])}
-          />
-        </label>
-      </div>
-
-      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+      <UploaderImagenConEliminar
+        url={configuracionEmpresa?.logo_empresa_url}
+        onSubir={subir}
+        onEliminar={eliminar}
+        confirmarEliminar="¿Eliminar el logo de empresa?"
+      />
     </div>
   );
 }

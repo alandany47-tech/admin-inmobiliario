@@ -55,3 +55,40 @@ export async function subirLogoEmpresa(formData) {
   revalidatePath("/configuracion/plantillas");
   return { ok: true, url: publicUrl };
 }
+
+/** Elimina el logo de empresa del bucket "logos-empresa" y limpia la fila única de configuracion_empresa. */
+export async function eliminarLogoEmpresa() {
+  const supabase = await createClient();
+
+  const { data: fila, error: errorConsulta } = await supabase
+    .from("configuracion_empresa")
+    .select("id, logo_empresa_url")
+    .limit(1)
+    .maybeSingle();
+
+  if (errorConsulta) {
+    return { error: `No se pudo consultar la configuración de empresa: ${errorConsulta.message}` };
+  }
+
+  if (fila?.logo_empresa_url) {
+    const ruta = fila.logo_empresa_url.split("/logos-empresa/")[1];
+    if (ruta) {
+      const { error: errorBorrado } = await supabase.storage.from("logos-empresa").remove([ruta]);
+      if (errorBorrado) {
+        return { error: `No se pudo eliminar el archivo: ${errorBorrado.message}` };
+      }
+    }
+  }
+
+  const { error: errorUpdate } = await supabase
+    .from("configuracion_empresa")
+    .update({ logo_empresa_url: null, updated_at: new Date().toISOString() })
+    .eq("id", fila.id);
+
+  if (errorUpdate) {
+    return { error: `No se pudo limpiar la referencia del logo: ${errorUpdate.message}` };
+  }
+
+  revalidatePath("/configuracion/plantillas");
+  return { ok: true };
+}

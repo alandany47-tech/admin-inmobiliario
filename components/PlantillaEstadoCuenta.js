@@ -1,5 +1,6 @@
 import { getConfiguracionPlantilla } from "@/app/actions/plantillas";
-import EncabezadoDualLogo from "@/components/EncabezadoDualLogo";
+import { getConfiguracionEmpresa } from "@/app/actions/configuracionEmpresa";
+import EncabezadoDualLogo, { LogoCaja } from "@/components/EncabezadoDualLogo";
 
 /** Proyecto único si todos los contratos del cliente pertenecen al mismo proyecto; si hay más de uno, no se puede mostrar un solo logo de proyecto. */
 function proyectoUnico(contratos) {
@@ -41,7 +42,7 @@ function Etiqueta({ estatus }) {
   const estilo = ESTILO_ESTATUS[estatus] || { bg: "rgba(0,0,0,0.06)", fg: "#52525c" };
   return (
     <span
-      className="rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
+      className="whitespace-nowrap rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
       style={{ backgroundColor: estilo.bg, color: estilo.fg }}
     >
       {estatus}
@@ -55,7 +56,7 @@ function Etiqueta({ estatus }) {
 // contratos son del mismo proyecto; si abarca varios, cae al color global.
 // Un único acento en toda la hoja (líneas finas + total), no bloques de
 // color distintos por fila.
-function HojaEstadoCuenta({ cliente, contratos, config, hojaRef }) {
+export function HojaEstadoCuenta({ cliente, contratos, config, logoEmpresaUrl, hojaRef }) {
   const proyecto = proyectoUnico(contratos);
   const colorPrimario = proyecto?.color_primario || config?.color_primario || "#0f172a";
   const ventaTotal = contratos.reduce((s, c) => s + Number(c.monto_total_venta), 0);
@@ -68,7 +69,11 @@ function HojaEstadoCuenta({ cliente, contratos, config, hojaRef }) {
 
       <div className="flex flex-col px-12 pb-12 pt-8">
         <div className="flex items-start justify-between pb-6">
-          <EncabezadoDualLogo configDipz={config} proyecto={proyecto} />
+          {proyecto?.logo_compacto_url ? (
+            <LogoCaja src={proyecto.logo_compacto_url} alt={proyecto.nombre || "Logo"} />
+          ) : (
+            <EncabezadoDualLogo configDipz={config} proyecto={proyecto} logoEmpresaUrl={logoEmpresaUrl} />
+          )}
           <div className="flex flex-col items-end gap-0.5">
             <span className="text-[20px] font-bold uppercase tracking-wide text-[#18181b]">Estado de Cuenta</span>
             <span className="text-[10px] text-[#8a8a94]">{formatoFecha(new Date().toISOString().slice(0, 10))}</span>
@@ -90,26 +95,26 @@ function HojaEstadoCuenta({ cliente, contratos, config, hojaRef }) {
             </div>
 
             <div
-              className="grid grid-cols-[2fr_1.2fr_1fr_1fr_0.8fr] gap-2 px-1 pb-2 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#8a8a94]"
+              className="grid grid-cols-[2fr_1.2fr_1fr_1fr_88px] gap-2 px-1 pb-2 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#8a8a94]"
               style={{ borderBottom: `2px solid ${colorPrimario}` }}
             >
-              <span>Concepto</span>
-              <span>Fecha programada</span>
-              <span className="text-right">Programado</span>
-              <span className="text-right">Pagado</span>
-              <span className="text-right">Estatus</span>
+              <span className="min-w-0">Concepto</span>
+              <span className="min-w-0">Fecha programada</span>
+              <span className="min-w-0 text-right">Programado</span>
+              <span className="min-w-0 text-right">Pagado</span>
+              <span className="min-w-0 text-right">Estatus</span>
             </div>
             {(c.planes_pago_cobranza ?? []).map((p, i, arr) => (
               <div
                 key={p.id}
-                className="grid grid-cols-[2fr_1.2fr_1fr_1fr_0.8fr] items-center gap-2 px-1 py-2.5 text-[11px]"
+                className="grid grid-cols-[2fr_1.2fr_1fr_1fr_88px] items-center gap-2 px-1 py-2.5 text-[11px]"
                 style={i === arr.length - 1 ? undefined : { borderBottom: "1px solid rgba(0,0,0,0.06)" }}
               >
-                <span className="font-medium text-[#27272a]">{p.tipo_pago}</span>
-                <span className="text-[#52525c]">{formatoFecha(p.fecha_programada)}</span>
-                <span className="text-right tabular-nums text-[#52525c]">{formatoMXN(p.monto_programado)}</span>
-                <span className="text-right tabular-nums font-semibold">{formatoMXN(p.monto_pagado)}</span>
-                <span className="flex justify-end">
+                <span className="min-w-0 font-medium text-[#27272a]">{p.tipo_pago}</span>
+                <span className="min-w-0 text-[#52525c]">{formatoFecha(p.fecha_programada)}</span>
+                <span className="min-w-0 text-right tabular-nums text-[#52525c]">{formatoMXN(p.monto_programado)}</span>
+                <span className="min-w-0 text-right tabular-nums font-semibold">{formatoMXN(p.monto_pagado)}</span>
+                <span className="flex min-w-0 justify-end overflow-hidden">
                   <Etiqueta estatus={p.estatus} />
                 </span>
               </div>
@@ -154,13 +159,17 @@ function HojaEstadoCuenta({ cliente, contratos, config, hojaRef }) {
 
 /**
  * Renderiza el estado de cuenta consolidado de un cliente (todos sus
- * contratos y su plan de pagos) fuera de pantalla, lo convierte a PDF y
- * dispara la descarga. Consume dinámicamente configuracion_plantillas
- * (clave ESTADO_CUENTA).
+ * contratos y su plan de pagos) fuera de pantalla y lo convierte a PDF,
+ * regresando el Blob listo para descargar o previsualizar — separado de
+ * `descargarEstadoCuenta` para que el preview modal de CapturaPagos.js
+ * pueda generar el mismo PDF solo hasta que el usuario confirme, en vez de
+ * bajarlo directo. Consume dinámicamente configuracion_plantillas (clave
+ * ESTADO_CUENTA).
  */
-export async function descargarEstadoCuenta(cliente, contratos) {
-  const [config, { default: jsPDF }, { default: html2canvas }, { createRoot }] = await Promise.all([
+export async function generarEstadoCuentaBlob(cliente, contratos) {
+  const [config, configEmpresa, { default: jsPDF }, { default: html2canvas }, { createRoot }] = await Promise.all([
     getConfiguracionPlantilla("ESTADO_CUENTA"),
+    getConfiguracionEmpresa(),
     import("jspdf"),
     import("html2canvas"),
     import("react-dom/client"),
@@ -174,7 +183,15 @@ export async function descargarEstadoCuenta(cliente, contratos) {
 
   const hojaRef = { current: null };
   const root = createRoot(contenedor);
-  root.render(<HojaEstadoCuenta cliente={cliente} contratos={contratos} config={config} hojaRef={hojaRef} />);
+  root.render(
+    <HojaEstadoCuenta
+      cliente={cliente}
+      contratos={contratos}
+      config={config}
+      logoEmpresaUrl={configEmpresa?.logo_empresa_url}
+      hojaRef={hojaRef}
+    />
+  );
 
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
@@ -188,7 +205,12 @@ export async function descargarEstadoCuenta(cliente, contratos) {
   root.unmount();
   document.body.removeChild(contenedor);
 
-  const blob = pdf.output("blob");
+  return pdf.output("blob");
+}
+
+/** Genera el estado de cuenta y dispara la descarga directa, sin preview previo. */
+export async function descargarEstadoCuenta(cliente, contratos) {
+  const blob = await generarEstadoCuentaBlob(cliente, contratos);
   const url = URL.createObjectURL(blob);
   const enlace = document.createElement("a");
   enlace.href = url;

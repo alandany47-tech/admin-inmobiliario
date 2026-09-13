@@ -1,5 +1,6 @@
 import { getConfiguracionPlantilla } from "@/app/actions/plantillas";
-import EncabezadoDualLogo from "@/components/EncabezadoDualLogo";
+import { getConfiguracionEmpresa } from "@/app/actions/configuracionEmpresa";
+import EncabezadoDualLogo, { LogoCaja } from "@/components/EncabezadoDualLogo";
 
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -39,7 +40,7 @@ function Fila({ concepto, detalle, monto, ultima }) {
 // tiene proyecto asociado; si es cotización libre, cae al color global. Se
 // usa un único acento en toda la hoja (líneas finas y el total), no bloques
 // de color distintos por fila, para un aspecto más limpio/"real estate".
-function HojaCotizacion({ cotizacion, config, hojaRef }) {
+function HojaCotizacion({ cotizacion, config, logoEmpresaUrl, hojaRef }) {
   const {
     folio,
     clienteNombre,
@@ -97,7 +98,11 @@ function HojaCotizacion({ cotizacion, config, hojaRef }) {
 
       <div className="flex flex-col px-12 pb-12 pt-8">
         <div className="flex items-start justify-between pb-6">
-          <EncabezadoDualLogo configDipz={config} proyecto={proyecto} />
+          {proyecto?.logo_compacto_url ? (
+            <LogoCaja src={proyecto.logo_compacto_url} alt={proyecto.nombre || "Logo"} />
+          ) : (
+            <EncabezadoDualLogo configDipz={config} proyecto={proyecto} logoEmpresaUrl={logoEmpresaUrl} />
+          )}
           <div className="flex flex-col items-end gap-0.5">
             <span className="text-[22px] font-bold uppercase tracking-wide text-[#18181b]">Cotización</span>
             <span className="font-mono text-[11px] text-[#52525c]">{folio}</span>
@@ -172,8 +177,9 @@ function HojaCotizacion({ cotizacion, config, hojaRef }) {
  * `EncabezadoDualLogo`.
  */
 export async function descargarCotizacionPdf(cotizacion) {
-  const [config, { default: jsPDF }, { default: html2canvas }, { createRoot }] = await Promise.all([
+  const [config, configEmpresa, { default: jsPDF }, { default: html2canvas }, { createRoot }] = await Promise.all([
     getConfiguracionPlantilla("COTIZACION"),
+    getConfiguracionEmpresa(),
     import("jspdf"),
     import("html2canvas"),
     import("react-dom/client"),
@@ -187,7 +193,14 @@ export async function descargarCotizacionPdf(cotizacion) {
 
   const hojaRef = { current: null };
   const root = createRoot(contenedor);
-  root.render(<HojaCotizacion cotizacion={cotizacion} config={config} hojaRef={hojaRef} />);
+  root.render(
+    <HojaCotizacion
+      cotizacion={cotizacion}
+      config={config}
+      logoEmpresaUrl={configEmpresa?.logo_empresa_url}
+      hojaRef={hojaRef}
+    />
+  );
 
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
