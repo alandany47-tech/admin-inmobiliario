@@ -106,9 +106,9 @@ function HojaCotizacion({ cotizacion, config, hojaRef }) {
         </div>
 
         {imagenUrl && (
-          <div className="mb-6 h-64 w-full overflow-hidden rounded-xl">
+          <div className="mb-6 h-64 w-full overflow-hidden rounded-xl bg-[#fafafa]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={imagenUrl} alt="" className="h-full w-full object-cover" crossOrigin="anonymous" />
+            <img src={imagenUrl} alt="" className="h-full w-full object-contain" crossOrigin="anonymous" />
           </div>
         )}
 

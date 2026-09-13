@@ -8,6 +8,16 @@ const TIPOS_VALIDOS = ["UNIDAD", "LIBRE"];
 const TIPOS_IMAGEN_VALIDOS = ["image/png", "image/jpeg", "image/webp"];
 
 /**
+ * Nombres de captura de pantalla de macOS pueden traer un espacio angosto
+ * (U+202F, "1.04.24 p.m.") u otros caracteres que Supabase Storage rechaza
+ * con 400 al usarlos tal cual en el key del objeto. Usamos solo la extensión.
+ */
+function extensionSegura(nombreArchivo) {
+  const match = /\.([a-zA-Z0-9]+)$/.exec(nombreArchivo || "");
+  return match ? match[1].toLowerCase() : "png";
+}
+
+/**
  * Sube la foto/render de una cotización libre al bucket "cotizaciones-libres"
  * (ruta {timestamp}-archivo: no hay unidad/proyecto todavía que la posea) y
  * regresa la URL pública. No hay fila de cotización que actualizar aquí: el
@@ -24,11 +34,11 @@ export async function subirImagenCotizacionLibre(formData) {
   }
 
   const supabase = await createClient();
-  const ruta = `${Date.now()}-${archivo.name}`;
+  const ruta = `${Date.now()}.${extensionSegura(archivo.name)}`;
 
   const { error: errorSubida } = await supabase.storage
     .from("cotizaciones-libres")
-    .upload(ruta, archivo, { upsert: true });
+    .upload(ruta, archivo, { upsert: true, contentType: archivo.type });
 
   if (errorSubida) {
     return { error: `No se pudo subir la imagen: ${errorSubida.message}` };
