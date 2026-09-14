@@ -1,8 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Upload, X } from "lucide-react";
+import { AlertTriangle, Download, Upload, X } from "lucide-react";
 import { previsualizarImportClientes, aplicarImportClientes } from "@/app/actions/clientes";
+import { descargarPlantillaExcel } from "@/lib/plantillasExcel";
+
+const COLUMNAS_PLANTILLA = [
+  "Nombre",
+  "RFC",
+  "Teléfono",
+  "Email",
+  "Dirección",
+  "Contacto Secundario",
+  "Notas",
+];
 
 /** Modal de carga masiva de clientes por Excel/CSV: parsea el archivo, previsualiza el diff y lo aplica. */
 export default function ModalImportarClientes({ onImportado, onCerrar }) {
@@ -71,6 +82,16 @@ export default function ModalImportarClientes({ onImportado, onCerrar }) {
             <X size={18} />
           </button>
         </div>
+
+        {!diff && (
+          <button
+            type="button"
+            onClick={() => descargarPlantillaExcel("plantilla-clientes.xlsx", COLUMNAS_PLANTILLA)}
+            className="flex w-fit items-center gap-1.5 rounded-md border border-black/[.08] px-2 py-1 text-xs shadow-sm hover:bg-zinc-100 dark:border-white/[.145] dark:bg-zinc-800 dark:hover:bg-zinc-700"
+          >
+            <Download size={13} /> Descargar Plantilla Excel
+          </button>
+        )}
 
         {!diff && (
           <label className="flex cursor-pointer flex-col items-center gap-2 rounded border border-dashed border-black/[.08] p-8 text-center text-sm text-zinc-500 hover:bg-black/[.02] dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.03]">

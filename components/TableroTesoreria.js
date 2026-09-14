@@ -7,6 +7,7 @@ import {
   Check,
   Download,
   Landmark,
+  Paperclip,
   Pencil,
   Plus,
   RotateCcw,
@@ -22,6 +23,7 @@ import {
   registrarMovimiento,
   revertirPagoSolicitud,
 } from "@/app/actions/tesoreria";
+import { subirComprobanteR2 } from "@/app/actions/comprobantesR2";
 import CeldaTruncada from "@/components/CeldaTruncada";
 
 const ICONO_POR_TIPO = {
@@ -94,6 +96,7 @@ export default function TableroTesoreria({
   const [solicitudActiva, setSolicitudActiva] = useState(null);
   const [fechaPago, setFechaPago] = useState(hoyISO());
   const [procesando, setProcesando] = useState(false);
+  const [comprobanteArchivo, setComprobanteArchivo] = useState(null);
 
   const [error, setError] = useState("");
 
@@ -322,6 +325,7 @@ export default function TableroTesoreria({
   function abrirModalPago(solicitud) {
     setSolicitudActiva(solicitud);
     setFechaPago(hoyISO());
+    setComprobanteArchivo(null);
     setError("");
   }
 
@@ -330,13 +334,25 @@ export default function TableroTesoreria({
     setError("");
 
     const resultado = await procesarPagoSolicitud(solicitudActiva.id, fechaPago);
-    setProcesando(false);
 
     if (resultado.error) {
+      setProcesando(false);
       setError(resultado.error);
       return;
     }
 
+    if (comprobanteArchivo) {
+      const formData = new FormData();
+      formData.append("archivo", comprobanteArchivo);
+      const resultadoComprobante = await subirComprobanteR2(solicitudActiva.id, formData);
+      if (resultadoComprobante.error) {
+        setProcesando(false);
+        setError(`Pago procesado, pero no se pudo subir el comprobante: ${resultadoComprobante.error}`);
+        return;
+      }
+    }
+
+    setProcesando(false);
     setSolicitudes((filas) => filas.filter((s) => s.id !== solicitudActiva.id));
     setSolicitudActiva(null);
   }
@@ -744,6 +760,22 @@ export default function TableroTesoreria({
                 onChange={(e) => setFechaPago(e.target.value)}
                 className="rounded border border-black/[.08] bg-transparent px-3 py-2 text-sm dark:border-white/[.145]"
               />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                Comprobante (PDF, opcional)
+              </label>
+              <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded border border-black/[.08] px-3 py-2 text-sm text-zinc-600 hover:bg-black/[.03] dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]">
+                <Paperclip size={14} />
+                {comprobanteArchivo ? comprobanteArchivo.name : "Adjuntar comprobante"}
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  onChange={(e) => setComprobanteArchivo(e.target.files?.[0] ?? null)}
+                />
+              </label>
             </div>
 
             {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}

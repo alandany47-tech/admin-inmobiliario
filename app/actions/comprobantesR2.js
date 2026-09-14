@@ -67,6 +67,7 @@ export async function subirComprobanteR2(solicitudId, formData) {
   revalidatePath("/control-maestro");
   revalidatePath("/historial");
   revalidatePath("/wbs");
+  revalidatePath("/tesoreria");
   return { ok: true, key };
 }
 

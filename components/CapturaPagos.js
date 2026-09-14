@@ -14,6 +14,7 @@ import { getConfiguracionEmpresa } from "@/app/actions/configuracionEmpresa";
 import { descargarReciboPago } from "@/components/PlantillaReciboPago";
 import { HojaEstadoCuenta, generarEstadoCuentaBlob } from "@/components/PlantillaEstadoCuenta";
 import PanelAlertasVencimiento from "@/components/PanelAlertasVencimiento";
+import CampoNumerico from "@/components/CampoNumerico";
 
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -343,6 +344,55 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
             </div>
           </div>
 
+          {contrato.unidades && (
+            <div className="grid grid-cols-2 gap-3 rounded-lg border border-black/[.08] bg-black/[.02] p-4 text-sm sm:grid-cols-3 md:grid-cols-6 dark:border-white/[.145] dark:bg-white/[.03]">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Unidad
+                </span>
+                <span className="font-medium text-black dark:text-zinc-50">
+                  {contrato.unidades.codigo_unidad ?? "—"}
+                </span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Tipo de Uso
+                </span>
+                <span className="text-black dark:text-zinc-50">{contrato.unidades.tipo_uso ?? "—"}</span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Superficie
+                </span>
+                <span className="text-black dark:text-zinc-50">
+                  {contrato.unidades.superficie_m2 ? `${contrato.unidades.superficie_m2} m²` : "—"}
+                </span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Precio m²
+                </span>
+                <span className="text-black dark:text-zinc-50">
+                  {contrato.unidades.precio_m2 ? formatoMXN(contrato.unidades.precio_m2) : "—"}
+                </span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Monto de Lista
+                </span>
+                <span className="text-black dark:text-zinc-50">
+                  {contrato.unidades.monto_lista ? formatoMXN(contrato.unidades.monto_lista) : "—"}
+                </span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Esquema
+                </span>
+                <span className="text-black dark:text-zinc-50">{contrato.unidades.esquema_unidad ?? "—"}</span>
+              </div>
+            </div>
+          )}
+
           {reciboListo && (
             <div className="flex items-center justify-between gap-3 rounded-lg border border-green-300 bg-green-50 px-4 py-3 text-sm dark:border-green-900 dark:bg-green-950/40">
               <span className="text-green-700 dark:text-green-400">Abono registrado correctamente.</span>
@@ -450,13 +500,12 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
 
             <div className="flex flex-col gap-1.5">
               <label className={labelClase}>Monto</label>
-              <input
-                type="number"
+              <CampoNumerico
                 min="0"
                 step="0.01"
                 className={inputClase}
                 value={abono.monto}
-                onChange={(e) => setAbono((a) => ({ ...a, monto: e.target.value }))}
+                onChange={(texto) => setAbono((a) => ({ ...a, monto: texto }))}
               />
             </div>
 

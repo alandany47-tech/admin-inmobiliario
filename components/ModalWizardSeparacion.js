@@ -5,6 +5,7 @@ import { Search, X } from "lucide-react";
 import { getUnidadesDisponibles } from "@/app/actions/unidades";
 import { buscarOCrearCliente } from "@/app/actions/clientes";
 import { crearSeparacionUnidad, generarPlanDePagos } from "@/app/actions/cobranza";
+import CampoNumerico from "@/components/CampoNumerico";
 
 const CLIENTE_NUEVO_VACIO = { nombre: "", rfc: "", telefono: "", email: "" };
 
@@ -454,13 +455,12 @@ export default function ModalWizardSeparacion({
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <label className={labelClase}>Monto Total de Venta</label>
-              <input
-                type="number"
+              <CampoNumerico
                 min="0"
                 step="0.01"
                 className={inputClase}
                 value={datos.montoTotal}
-                onChange={(e) => setDatos((d) => ({ ...d, montoTotal: e.target.value }))}
+                onChange={(texto) => setDatos((d) => ({ ...d, montoTotal: texto }))}
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -476,24 +476,22 @@ export default function ModalWizardSeparacion({
             </div>
             <div className="flex flex-col gap-1.5">
               <label className={labelClase}>Monto de Separación</label>
-              <input
-                type="number"
+              <CampoNumerico
                 min="0"
                 step="0.01"
                 className={inputClase}
                 value={datos.montoSeparacion}
-                onChange={(e) => setDatos((d) => ({ ...d, montoSeparacion: e.target.value }))}
+                onChange={(texto) => setDatos((d) => ({ ...d, montoSeparacion: texto }))}
               />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className={labelClase}>Enganche Pactado</label>
-              <input
-                type="number"
+              <CampoNumerico
                 min="0"
                 step="0.01"
                 className={inputClase}
                 value={datos.montoEnganchePactado}
-                onChange={(e) => setDatos((d) => ({ ...d, montoEnganchePactado: e.target.value }))}
+                onChange={(texto) => setDatos((d) => ({ ...d, montoEnganchePactado: texto }))}
               />
             </div>
             <div className="flex flex-col gap-1.5 col-span-2">
@@ -545,13 +543,12 @@ export default function ModalWizardSeparacion({
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <label className={labelClase}>Monto Enganche</label>
-              <input
-                type="number"
+              <CampoNumerico
                 min="0"
                 step="0.01"
                 className={inputClase}
                 value={plan.montoEnganche}
-                onChange={(e) => setPlan((p) => ({ ...p, montoEnganche: e.target.value }))}
+                onChange={(texto) => setPlan((p) => ({ ...p, montoEnganche: texto }))}
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -566,24 +563,22 @@ export default function ModalWizardSeparacion({
 
             <div className="flex flex-col gap-1.5">
               <label className={labelClase}># Mensualidades</label>
-              <input
-                type="number"
+              <CampoNumerico
                 min="0"
                 step="1"
                 className={inputClase}
                 value={plan.numMensualidades}
-                onChange={(e) => setPlan((p) => ({ ...p, numMensualidades: e.target.value }))}
+                onChange={(texto) => setPlan((p) => ({ ...p, numMensualidades: texto }))}
               />
             </div>
             <div className="flex flex-col gap-1.5">
               <label className={labelClase}>Monto por Mensualidad</label>
-              <input
-                type="number"
+              <CampoNumerico
                 min="0"
                 step="0.01"
                 className={inputClase}
                 value={plan.montoMensualidad}
-                onChange={(e) => setPlan((p) => ({ ...p, montoMensualidad: e.target.value }))}
+                onChange={(texto) => setPlan((p) => ({ ...p, montoMensualidad: texto }))}
               />
             </div>
             <div className="flex flex-col gap-1.5 col-span-2">
@@ -598,13 +593,12 @@ export default function ModalWizardSeparacion({
 
             <div className="flex flex-col gap-1.5">
               <label className={labelClase}>Monto a Entrega</label>
-              <input
-                type="number"
+              <CampoNumerico
                 min="0"
                 step="0.01"
                 className={inputClase}
                 value={plan.montoEntrega}
-                onChange={(e) => setPlan((p) => ({ ...p, montoEntrega: e.target.value }))}
+                onChange={(texto) => setPlan((p) => ({ ...p, montoEntrega: texto }))}
               />
             </div>
             <div className="flex flex-col gap-1.5">

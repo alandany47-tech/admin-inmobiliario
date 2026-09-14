@@ -1,8 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Upload, X } from "lucide-react";
+import { AlertTriangle, Download, Upload, X } from "lucide-react";
 import { previsualizarImportProveedores, aplicarImportProveedores } from "@/app/actions/proveedores";
+import { descargarPlantillaExcel } from "@/lib/plantillasExcel";
+
+const COLUMNAS_PLANTILLA = [
+  "Razón Social",
+  "RFC",
+  "Banco",
+  "Cuenta / CLABE",
+  "Contacto Nombre",
+  "Teléfono",
+  "Email",
+];
 
 /** Modal de carga masiva de proveedores por Excel/CSV: parsea el archivo, previsualiza el diff y lo aplica. */
 export default function ModalImportarProveedores({ onImportado, onCerrar }) {
@@ -74,6 +85,16 @@ export default function ModalImportarProveedores({ onImportado, onCerrar }) {
             <X size={18} />
           </button>
         </div>
+
+        {!diff && (
+          <button
+            type="button"
+            onClick={() => descargarPlantillaExcel("plantilla-proveedores.xlsx", COLUMNAS_PLANTILLA)}
+            className="flex w-fit items-center gap-1.5 rounded-md border border-black/[.08] px-2 py-1 text-xs shadow-sm hover:bg-zinc-100 dark:border-white/[.145] dark:bg-zinc-800 dark:hover:bg-zinc-700"
+          >
+            <Download size={13} /> Descargar Plantilla Excel
+          </button>
+        )}
 
         {!diff && (
           <label className="flex cursor-pointer flex-col items-center gap-2 rounded border border-dashed border-black/[.08] p-8 text-center text-sm text-zinc-500 hover:bg-black/[.02] dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.03]">

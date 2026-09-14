@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { FileText, X } from "lucide-react";
 import { crearSolicitudPago, subirXmlFactura } from "@/app/actions/solicitudes";
+import CampoNumerico from "@/components/CampoNumerico";
 
 const METODOS_PAGO = ["Transferencia bancaria", "Efectivo"];
 
@@ -17,14 +18,6 @@ const FORM_VACIO = {
   descripcion: "",
   monto: "",
 };
-
-function proximoViernesISO() {
-  const hoy = new Date();
-  const diasHastaViernes = ((5 - hoy.getDay() + 7) % 7) || 7;
-  const viernes = new Date(hoy);
-  viernes.setDate(hoy.getDate() + diasHastaViernes);
-  return viernes.toISOString().slice(0, 10);
-}
 
 /** Modal de alta rápida de solicitudes desde el Panel Control Maestro. */
 export default function ModalSolicitudRapida({ proyectos, proveedores, wbsCatalog, onCreada, onCerrar }) {
@@ -94,7 +87,6 @@ export default function ModalSolicitudRapida({ proyectos, proveedores, wbsCatalo
       subtotal,
       iva,
       total,
-      fechaProgramada: proximoViernesISO(),
     });
 
     setEnviando(false);
@@ -247,13 +239,12 @@ export default function ModalSolicitudRapida({ proyectos, proveedores, wbsCatalo
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
             <label className={labelClase}>Monto (subtotal)</label>
-            <input
-              type="number"
+            <CampoNumerico
               min="0"
               step="0.01"
               className={inputClase}
               value={form.monto}
-              onChange={(e) => actualizarCampo("monto", e.target.value)}
+              onChange={(texto) => actualizarCampo("monto", texto)}
             />
           </div>
           <label className="flex items-end gap-2 pb-2.5 text-sm text-zinc-600 dark:text-zinc-400">

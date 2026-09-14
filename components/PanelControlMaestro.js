@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Download, FileText, Paperclip, Plus, Trash2 } from "lucide-react";
+import { Download, FileText, Paperclip, Plus, Receipt, Trash2 } from "lucide-react";
 import {
   cambiarEstadoGeneral,
   eliminarComprobante,
@@ -11,6 +11,7 @@ import {
 import { eliminarComprobanteR2, obtenerUrlComprobante, subirComprobanteR2 } from "@/app/actions/comprobantesR2";
 import ModalSolicitudRapida from "@/components/ModalSolicitudRapida";
 import ModalVisorPDF from "@/components/ModalVisorPDF";
+import ModalVisorFactura from "@/components/ModalVisorFactura";
 import ModalVisorComprobante from "@/components/ModalVisorComprobante";
 import CeldaTruncada from "@/components/CeldaTruncada";
 
@@ -55,6 +56,7 @@ export default function PanelControlMaestro({
   const [estado, setEstado] = useState("");
   const [modalAbierto, setModalAbierto] = useState(false);
   const [pdfSolicitudId, setPdfSolicitudId] = useState(null);
+  const [facturaSolicitud, setFacturaSolicitud] = useState(null);
   const [comprobanteSolicitudId, setComprobanteSolicitudId] = useState(null);
   const [actualizando, setActualizando] = useState({});
   const [subiendo, setSubiendo] = useState({});
@@ -397,6 +399,7 @@ export default function PanelControlMaestro({
                 <th className="px-4 py-3 text-right">Total</th>
                 <th className="px-4 py-3">Estado</th>
                 <th className="px-4 py-3">Comprobante</th>
+                <th className="px-4 py-3">No. Factura / CFDI</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -498,6 +501,23 @@ export default function PanelControlMaestro({
                         )}
                       </div>
                     </td>
+                    <td className="px-4 py-3">
+                      {s.num_factura ? (
+                        s.xml_factura ? (
+                          <button
+                            type="button"
+                            onClick={() => setFacturaSolicitud(s)}
+                            className="flex items-center gap-1 text-xs text-zinc-500 hover:underline dark:text-zinc-400"
+                          >
+                            <Receipt size={13} /> {s.num_factura}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-zinc-500 dark:text-zinc-400">{s.num_factura}</span>
+                        )
+                      ) : (
+                        <span className="text-xs text-zinc-400 dark:text-zinc-600">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-3">
                         <button
@@ -542,6 +562,13 @@ export default function PanelControlMaestro({
         solicitudId={pdfSolicitudId}
         open={pdfSolicitudId !== null}
         onClose={() => setPdfSolicitudId(null)}
+      />
+
+      <ModalVisorFactura
+        open={facturaSolicitud !== null}
+        onClose={() => setFacturaSolicitud(null)}
+        xml={facturaSolicitud?.xml_factura}
+        folioSolicitud={facturaSolicitud?.folio}
       />
 
       <ModalVisorComprobante

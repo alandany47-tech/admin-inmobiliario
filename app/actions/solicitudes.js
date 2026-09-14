@@ -82,7 +82,6 @@ export async function crearSolicitudPago(payload) {
     subtotal,
     iva,
     total,
-    fechaProgramada,
   } = payload;
 
   let proveedorId = proveedor?.id ?? null;
@@ -143,7 +142,7 @@ export async function crearSolicitudPago(payload) {
       subtotal,
       iva,
       total,
-      fecha_programada: fechaProgramada,
+      fecha_programada: new Date().toISOString().slice(0, 10),
     })
     .select()
     .single();

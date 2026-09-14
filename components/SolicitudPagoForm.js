@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CalendarClock, CheckCircle2, FileText, Plus, Search, Trash2, Users, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, Plus, Search, Trash2, Users, X } from "lucide-react";
 import { crearSolicitudPago, getFolioPreview, subirXmlFactura } from "@/app/actions/solicitudes";
 import { compararCodigoWbsNatural, construirRutaWbs } from "@/lib/wbs";
+import CampoNumerico from "@/components/CampoNumerico";
 
 const TASA_IVA = 0.16;
 const METODOS_PAGO = ["Transferencia bancaria", "Efectivo"];
@@ -40,25 +41,9 @@ function formatoMXN(valor) {
   return valor.toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 }
 
-function calcularProximoViernes() {
-  const hoy = new Date();
-  const diasHastaViernes = ((5 - hoy.getDay() + 7) % 7) || 7;
-  const viernes = new Date(hoy);
-  viernes.setDate(hoy.getDate() + diasHastaViernes);
-  return viernes;
-}
-
 const fechaHoy = new Date().toLocaleDateString("es-MX", {
   day: "2-digit",
   month: "long",
-  year: "numeric",
-});
-
-const proximoViernes = calcularProximoViernes();
-const fechaProgramadaISO = proximoViernes.toISOString().slice(0, 10);
-const fechaProgramadaDisplay = proximoViernes.toLocaleDateString("es-MX", {
-  day: "2-digit",
-  month: "2-digit",
   year: "numeric",
 });
 
@@ -286,7 +271,6 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
       subtotal,
       iva,
       total,
-      fechaProgramada: fechaProgramadaISO,
     });
 
     setEnviando(false);
@@ -344,8 +328,9 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
             <div className="flex flex-col gap-1.5">
               <label className={labelClase}>Proyecto</label>
               <select
-                className={inputClase}
+                className={`${inputClase} disabled:cursor-not-allowed disabled:opacity-50`}
                 value={form.proyectoId}
+                disabled={esCorporativo && !!form.proyectoId}
                 onChange={(e) => cambiarProyecto(e.target.value)}
               >
                 <option value="">Selecciona un proyecto…</option>
@@ -563,15 +548,6 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
             </label>
           </div>
 
-          <div className="flex flex-col gap-1.5 sm:max-w-xs">
-            <label className={labelClase}>Fecha Estimada de Pago</label>
-            <div
-              className={`${inputClase} inline-flex w-fit items-center gap-2 bg-black/[.03] text-zinc-600 dark:bg-white/[.04] dark:text-zinc-400`}
-            >
-              <CalendarClock size={14} />
-              Próximo viernes: {fechaProgramadaDisplay}
-            </div>
-          </div>
         </section>
 
         {/* Clasificación WBS */}
@@ -599,7 +575,8 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
 
           {esCorporativo ? (
             <p className="rounded border border-dashed border-black/[.08] px-3 py-2.5 text-sm text-zinc-500 dark:border-white/[.145] dark:text-zinc-400">
-              Este gasto se pagará sin partida WBS asignada. Tesorería lo repartirá entre 2-4 partidas
+              Este gasto se pagará sin partida WBS asignada. El proyecto queda fijo como origen del folio y no
+              se puede cambiar mientras el gasto sea corporativo. Tesorería lo repartirá entre 2-4 partidas
               destino una vez pagado.
             </p>
           ) : (
@@ -702,13 +679,12 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
                 key={p.id}
                 className="grid min-w-[560px] grid-cols-[80px_1fr_140px_140px_36px] items-center gap-2"
               >
-                <input
-                  type="number"
+                <CampoNumerico
                   min="0"
                   step="1"
                   className={inputClase}
                   value={p.cantidad}
-                  onChange={(e) => actualizarPartida(p.id, "cantidad", e.target.value)}
+                  onChange={(texto) => actualizarPartida(p.id, "cantidad", texto)}
                 />
                 <input
                   type="text"
@@ -716,13 +692,12 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
                   value={p.descripcion}
                   onChange={(e) => actualizarPartida(p.id, "descripcion", e.target.value)}
                 />
-                <input
-                  type="number"
+                <CampoNumerico
                   min="0"
                   step="0.01"
                   className={inputClase}
                   value={p.precioUnitario}
-                  onChange={(e) => actualizarPartida(p.id, "precioUnitario", e.target.value)}
+                  onChange={(texto) => actualizarPartida(p.id, "precioUnitario", texto)}
                 />
                 <div className={`${inputClase} bg-black/[.03] text-right dark:bg-white/[.04]`}>
                   {formatoMXN(subtotalPartida(p))}

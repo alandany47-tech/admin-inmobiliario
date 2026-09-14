@@ -87,12 +87,25 @@ export function HojaEstadoCuenta({ cliente, contratos, config, logoEmpresaUrl, h
 
         {contratos.map((c) => (
           <div key={c.id} className="mt-8 flex flex-col">
-            <div className="mb-3 flex items-baseline justify-between">
+            <div className="mb-1 flex items-baseline justify-between">
               <span className="text-[12px] font-semibold text-[#18181b]">Unidad {c.unidades?.codigo_unidad}</span>
               <span className="text-[10px] text-[#8a8a94]">
                 Contrato {formatoFecha(c.fecha_contrato)} · {formatoMXN(c.monto_total_venta)}
               </span>
             </div>
+
+            {c.unidades && (c.unidades.tipo_uso || c.unidades.superficie_m2 || c.unidades.precio_m2 || c.unidades.esquema_unidad) && (
+              <div className="mb-3 text-[9px] text-[#8a8a94]">
+                {[
+                  c.unidades.tipo_uso,
+                  c.unidades.superficie_m2 && `${c.unidades.superficie_m2} m²`,
+                  c.unidades.precio_m2 && `${formatoMXN(c.unidades.precio_m2)}/m²`,
+                  c.unidades.esquema_unidad,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </div>
+            )}
 
             <div
               className="grid grid-cols-[2fr_1.2fr_1fr_1fr_88px] gap-2 px-1 pb-2 text-[9px] font-semibold uppercase tracking-[0.1em] text-[#8a8a94]"
