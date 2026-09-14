@@ -5,6 +5,7 @@ import { FileDown, ImagePlus, Trash2, X } from "lucide-react";
 import { getUnidadesDisponibles } from "@/app/actions/unidades";
 import { crearCotizacion, eliminarCotizacion, subirImagenCotizacionLibre } from "@/app/actions/cotizaciones";
 import { descargarCotizacionPdf } from "@/components/PlantillaCotizacion";
+import CampoNumerico from "@/components/CampoNumerico";
 
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -33,6 +34,11 @@ const SIMULADOR_VACIO = {
   pctEntrega: 0,
   plazoMeses: "",
 };
+
+const ESQUEMAS_PRESET = [
+  { id: "90-10", etiqueta: "90 / 10", pctEnganche: 90, pctEntrega: 10 },
+  { id: "15-45-40", etiqueta: "15 / 45 / 40", pctEnganche: 15, pctEntrega: 40 },
+];
 
 const COLOR_MENSUALIDADES = "#a1a1aa"; // zinc-400: color neutro para el tramo "automático" de la barra
 
@@ -123,13 +129,12 @@ function BarraDistribucion({ total, pctEnganche, pctEntrega, montoSeparacion, co
             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: colorPrimario }} /> Enganche
           </span>
           <div className="flex items-center gap-1">
-            <input
-              type="number"
+            <CampoNumerico
               min="0"
               max="100"
               className={`${inputClase} w-16 px-2 py-1`}
               value={pctEnganche}
-              onChange={(e) => onCambiar({ pctEnganche: clamp(Math.round(Number(e.target.value) || 0), 0, 100 - pctEntrega) })}
+              onChange={(texto) => onCambiar({ pctEnganche: clamp(Math.round(Number(texto) || 0), 0, 100 - pctEntrega) })}
             />
             <span className="text-zinc-500">%</span>
           </div>
@@ -146,16 +151,15 @@ function BarraDistribucion({ total, pctEnganche, pctEntrega, montoSeparacion, co
 
         <div className="flex flex-col gap-1">
           <span className="flex items-center gap-1.5 font-medium text-zinc-700 dark:text-zinc-300">
-            <span className="h-2 w-2 rounded-full bg-[#b45309]" /> Entrega
+            <span className="h-2 w-2 rounded-full bg-[#b45309]" /> Finiquito / Entrega
           </span>
           <div className="flex items-center gap-1">
-            <input
-              type="number"
+            <CampoNumerico
               min="0"
               max="100"
               className={`${inputClase} w-16 px-2 py-1`}
               value={pctEntrega}
-              onChange={(e) => onCambiar({ pctEntrega: clamp(Math.round(Number(e.target.value) || 0), 0, 100 - pctEnganche) })}
+              onChange={(texto) => onCambiar({ pctEntrega: clamp(Math.round(Number(texto) || 0), 0, 100 - pctEnganche) })}
             />
             <span className="text-zinc-500">%</span>
           </div>
@@ -247,6 +251,14 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
   function actualizarBarra(cambios) {
     setSim((s) => ({ ...s, ...cambios }));
   }
+
+  function aplicarEsquemaPreset(preset) {
+    setSim((s) => ({ ...s, pctEnganche: preset.pctEnganche, pctEntrega: preset.pctEntrega }));
+  }
+
+  const esquemaActivo =
+    ESQUEMAS_PRESET.find((e) => e.pctEnganche === sim.pctEnganche && e.pctEntrega === sim.pctEntrega)?.id ??
+    "personalizado";
 
   const proyecto = proyectos.find((p) => String(p.id) === proyectoId) ?? null;
   const unidad = unidades.find((u) => u.id === unidadId) ?? null;
@@ -499,41 +511,65 @@ export default function Cotizador({ proyectos, historial: historialInicial }) {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
             <label className={labelClase}>Monto Total</label>
-            <input
-              type="number"
+            <CampoNumerico
               min="0"
               step="0.01"
               className={inputClase}
               value={sim.montoTotal}
-              onChange={(e) => setSim((s) => ({ ...s, montoTotal: e.target.value }))}
+              onChange={(texto) => setSim((s) => ({ ...s, montoTotal: texto }))}
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className={labelClase}>Plazo (meses)</label>
-            <input
-              type="number"
+            <CampoNumerico
               min="0"
               step="1"
               className={inputClase}
               value={sim.plazoMeses}
-              onChange={(e) => setSim((s) => ({ ...s, plazoMeses: e.target.value }))}
+              onChange={(texto) => setSim((s) => ({ ...s, plazoMeses: texto }))}
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <label className={labelClase}>Separación (incluida en el enganche)</label>
-            <input
-              type="number"
+            <CampoNumerico
               min="0"
               step="0.01"
               className={inputClase}
               value={sim.montoSeparacion}
-              onChange={(e) => setSim((s) => ({ ...s, montoSeparacion: e.target.value }))}
+              onChange={(texto) => setSim((s) => ({ ...s, montoSeparacion: texto }))}
             />
           </div>
         </div>
 
         <div className="flex flex-col gap-3">
-          <label className={labelClase}>Distribución del monto total</label>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <label className={labelClase}>Distribución del monto total</label>
+            <div className="flex flex-wrap gap-1.5">
+              {ESQUEMAS_PRESET.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => aplicarEsquemaPreset(preset)}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                    esquemaActivo === preset.id
+                      ? "border-transparent bg-foreground text-background"
+                      : "border-black/[.08] text-zinc-600 hover:bg-black/[.04] dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+                  }`}
+                >
+                  {preset.etiqueta}
+                </button>
+              ))}
+              <span
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium ${
+                  esquemaActivo === "personalizado"
+                    ? "border-transparent bg-foreground text-background"
+                    : "border-black/[.08] text-zinc-500 dark:border-white/[.145] dark:text-zinc-400"
+                }`}
+              >
+                Personalizado
+              </span>
+            </div>
+          </div>
           <BarraDistribucion
             total={montoTotal}
             pctEnganche={sim.pctEnganche}

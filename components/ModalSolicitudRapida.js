@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { X } from "lucide-react";
-import { crearSolicitudPago } from "@/app/actions/solicitudes";
+import { FileText, X } from "lucide-react";
+import { crearSolicitudPago, subirXmlFactura } from "@/app/actions/solicitudes";
+import CampoNumerico from "@/components/CampoNumerico";
 
 const METODOS_PAGO = ["Transferencia bancaria", "Efectivo"];
 
@@ -18,18 +19,11 @@ const FORM_VACIO = {
   monto: "",
 };
 
-function proximoViernesISO() {
-  const hoy = new Date();
-  const diasHastaViernes = ((5 - hoy.getDay() + 7) % 7) || 7;
-  const viernes = new Date(hoy);
-  viernes.setDate(hoy.getDate() + diasHastaViernes);
-  return viernes.toISOString().slice(0, 10);
-}
-
 /** Modal de alta rápida de solicitudes desde el Panel Control Maestro. */
 export default function ModalSolicitudRapida({ proyectos, proveedores, wbsCatalog, onCreada, onCerrar }) {
   const [form, setForm] = useState(FORM_VACIO);
   const [aplicaIva, setAplicaIva] = useState(true);
+  const [xmlArchivo, setXmlArchivo] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
 
@@ -93,7 +87,6 @@ export default function ModalSolicitudRapida({ proyectos, proveedores, wbsCatalo
       subtotal,
       iva,
       total,
-      fechaProgramada: proximoViernesISO(),
     });
 
     setEnviando(false);
@@ -101,6 +94,14 @@ export default function ModalSolicitudRapida({ proyectos, proveedores, wbsCatalo
     if (resultado.error) {
       setError(resultado.error);
       return;
+    }
+
+    if (xmlArchivo) {
+      const xmlTexto = await xmlArchivo.text();
+      const resultadoXml = await subirXmlFactura(resultado.id, xmlTexto);
+      if (resultadoXml.error) {
+        window.alert(`La solicitud se creó, pero no se pudo guardar el XML: ${resultadoXml.error}`);
+      }
     }
 
     onCreada();
@@ -238,13 +239,12 @@ export default function ModalSolicitudRapida({ proyectos, proveedores, wbsCatalo
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
             <label className={labelClase}>Monto (subtotal)</label>
-            <input
-              type="number"
+            <CampoNumerico
               min="0"
               step="0.01"
               className={inputClase}
               value={form.monto}
-              onChange={(e) => actualizarCampo("monto", e.target.value)}
+              onChange={(texto) => actualizarCampo("monto", texto)}
             />
           </div>
           <label className="flex items-end gap-2 pb-2.5 text-sm text-zinc-600 dark:text-zinc-400">

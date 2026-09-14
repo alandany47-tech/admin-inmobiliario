@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Upload, X } from "lucide-react";
+import { AlertTriangle, Download, Upload, X } from "lucide-react";
 import { previsualizarImportWbs, aplicarImportWbs } from "@/app/actions/wbs";
+import { descargarPlantillaExcel } from "@/lib/plantillasExcel";
+
+const COLUMNAS_PLANTILLA = ["Categoría", "Partida", "Presupuesto"];
 
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -74,6 +77,16 @@ export default function ModalImportarWbs({ proyectoId, onImportado, onCerrar }) 
             <X size={18} />
           </button>
         </div>
+
+        {!diff && (
+          <button
+            type="button"
+            onClick={() => descargarPlantillaExcel("plantilla-wbs.xlsx", COLUMNAS_PLANTILLA)}
+            className="flex w-fit items-center gap-1.5 rounded-md border border-black/[.08] px-2 py-1 text-xs shadow-sm hover:bg-zinc-100 dark:border-white/[.145] dark:bg-zinc-800 dark:hover:bg-zinc-700"
+          >
+            <Download size={13} /> Descargar Plantilla Excel
+          </button>
+        )}
 
         {!diff && (
           <label className="flex cursor-pointer flex-col items-center gap-2 rounded border border-dashed border-black/[.08] p-8 text-center text-sm text-zinc-500 hover:bg-black/[.02] dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.03]">

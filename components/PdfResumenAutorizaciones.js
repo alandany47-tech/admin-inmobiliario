@@ -1,4 +1,5 @@
 import { getConfiguracionPlantilla } from "@/app/actions/plantillas";
+import { getConfiguracionEmpresa } from "@/app/actions/configuracionEmpresa";
 import EncabezadoDualLogo from "@/components/EncabezadoDualLogo";
 
 /** Proyecto único si todas las solicitudes filtradas pertenecen al mismo proyecto; si abarca varios, no hay un solo logo de proyecto que mostrar. */
@@ -37,7 +38,7 @@ function agruparPorProyecto(solicitudes) {
 // color de acento es por proyecto (proyectos.color_primario) cuando todas las
 // solicitudes son del mismo proyecto; si el resumen abarca varios, cae al
 // color global de configuracion_plantillas.
-function HojaResumen({ solicitudes, config, hojaRef }) {
+function HojaResumen({ solicitudes, config, logoEmpresaUrl, hojaRef }) {
   const porProyecto = agruparPorProyecto(solicitudes);
   const totalGeneral = solicitudes.reduce((s, r) => s + Number(r.total ?? 0), 0);
   const proyecto = proyectoUnico(solicitudes);
@@ -46,7 +47,7 @@ function HojaResumen({ solicitudes, config, hojaRef }) {
   return (
     <div ref={hojaRef} className="flex w-[816px] flex-col bg-white p-10 text-black">
       <div className="flex items-center justify-between border-b-4 pb-4" style={{ borderColor: colorPrimario }}>
-        <EncabezadoDualLogo configDipz={config} proyecto={proyecto} />
+        <EncabezadoDualLogo configDipz={config} proyecto={proyecto} logoEmpresaUrl={logoEmpresaUrl} />
         <div className="flex flex-col items-end">
           <span className="text-lg font-bold uppercase tracking-wide">Resumen de Autorizaciones</span>
           <span className="text-xs text-[#52525c]">{formatoFecha(new Date())}</span>
@@ -144,8 +145,9 @@ function HojaResumen({ solicitudes, config, hojaRef }) {
  * pie/términos.
  */
 export async function generarPdfResumenAutorizaciones(solicitudes) {
-  const [config, { default: jsPDF }, { default: html2canvas }, { createRoot }] = await Promise.all([
+  const [config, configEmpresa, { default: jsPDF }, { default: html2canvas }, { createRoot }] = await Promise.all([
     getConfiguracionPlantilla("SOLICITUD_PAGO"),
+    getConfiguracionEmpresa(),
     import("jspdf"),
     import("html2canvas"),
     import("react-dom/client"),
@@ -159,7 +161,14 @@ export async function generarPdfResumenAutorizaciones(solicitudes) {
 
   const hojaRef = { current: null };
   const root = createRoot(contenedor);
-  root.render(<HojaResumen solicitudes={solicitudes} config={config} hojaRef={hojaRef} />);
+  root.render(
+    <HojaResumen
+      solicitudes={solicitudes}
+      config={config}
+      logoEmpresaUrl={configEmpresa?.logo_empresa_url}
+      hojaRef={hojaRef}
+    />
+  );
 
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 

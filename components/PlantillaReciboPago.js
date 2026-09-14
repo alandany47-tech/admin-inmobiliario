@@ -1,4 +1,5 @@
 import { getConfiguracionPlantilla } from "@/app/actions/plantillas";
+import { getConfiguracionEmpresa } from "@/app/actions/configuracionEmpresa";
 import EncabezadoDualLogo from "@/components/EncabezadoDualLogo";
 
 function formatoMXN(valor) {
@@ -24,7 +25,7 @@ function Campo({ label, valor }) {
 // (proyectos.color_primario) si lo tiene, si no cae al color global de
 // configuracion_plantillas. Un único acento en toda la hoja (líneas finas +
 // total), no bloques de color distintos.
-function HojaRecibo({ pago, config, hojaRef }) {
+function HojaRecibo({ pago, config, logoEmpresaUrl, hojaRef }) {
   const proyecto = pago.proyecto;
   const colorPrimario = proyecto?.color_primario || config?.color_primario || "#0f172a";
 
@@ -34,7 +35,7 @@ function HojaRecibo({ pago, config, hojaRef }) {
 
       <div className="flex flex-col px-12 pb-12 pt-8">
         <div className="flex items-start justify-between pb-6">
-          <EncabezadoDualLogo configDipz={config} proyecto={proyecto} />
+          <EncabezadoDualLogo configDipz={config} proyecto={proyecto} logoEmpresaUrl={logoEmpresaUrl} />
           <div className="flex flex-col items-end gap-0.5">
             <span className="text-[22px] font-bold uppercase tracking-wide text-[#18181b]">Recibo de Pago</span>
             <span className="font-mono text-[11px] text-[#52525c]">{pago.folio}</span>
@@ -81,8 +82,9 @@ function HojaRecibo({ pago, config, hojaRef }) {
  * configuracion_plantillas (clave RECIBO_PAGO) para logo/encabezado/color/pie.
  */
 export async function generarReciboPagoBlob(pago) {
-  const [config, { default: jsPDF }, { default: html2canvas }, { createRoot }] = await Promise.all([
+  const [config, configEmpresa, { default: jsPDF }, { default: html2canvas }, { createRoot }] = await Promise.all([
     getConfiguracionPlantilla("RECIBO_PAGO"),
+    getConfiguracionEmpresa(),
     import("jspdf"),
     import("html2canvas"),
     import("react-dom/client"),
@@ -96,7 +98,9 @@ export async function generarReciboPagoBlob(pago) {
 
   const hojaRef = { current: null };
   const root = createRoot(contenedor);
-  root.render(<HojaRecibo pago={pago} config={config} hojaRef={hojaRef} />);
+  root.render(
+    <HojaRecibo pago={pago} config={config} logoEmpresaUrl={configEmpresa?.logo_empresa_url} hojaRef={hojaRef} />
+  );
 
   await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 

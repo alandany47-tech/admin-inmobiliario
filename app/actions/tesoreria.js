@@ -24,7 +24,7 @@ export async function getMovimientosTesoreria() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("movimientos_tesoreria")
-    .select("*, proyectos(codigo, nombre), solicitudes_pago(estado)")
+    .select("*, proyectos(codigo, nombre), solicitudes_pago(estado, num_factura)")
     .order("fecha", { ascending: false })
     .order("created_at", { ascending: false });
 

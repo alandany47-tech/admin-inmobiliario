@@ -12,6 +12,7 @@ import {
 import { getClientes } from "@/app/actions/clientes";
 import ModalImportarUnidades from "@/components/ModalImportarUnidades";
 import ModalWizardSeparacion from "@/components/ModalWizardSeparacion";
+import CampoNumerico from "@/components/CampoNumerico";
 
 const TIPOS_USO = ["DEPARTAMENTO", "OFICINA", "LOCAL", "BODEGA", "OTRO"];
 const ESQUEMAS = ["TRADICIONAL", "INVERSIONISTA"];
@@ -344,13 +345,12 @@ export default function PanelUnidades({ proyectos }) {
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className={labelClase}>Superficie (m²)</label>
-                <input
-                  type="number"
+                <CampoNumerico
                   min="0"
                   step="0.01"
                   className={inputClase}
                   value={form.superficieM2}
-                  onChange={(e) => actualizarSuperficie(e.target.value)}
+                  onChange={actualizarSuperficie}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
@@ -372,24 +372,22 @@ export default function PanelUnidades({ proyectos }) {
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className={labelClase}>Precio por m²</label>
-                <input
-                  type="number"
+                <CampoNumerico
                   min="0"
                   step="0.01"
                   className={inputClase}
                   value={form.precioM2}
-                  onChange={(e) => actualizarPrecioM2(e.target.value)}
+                  onChange={actualizarPrecioM2}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className={labelClase}>Monto de Lista</label>
-                <input
-                  type="number"
+                <CampoNumerico
                   min="0"
                   step="0.01"
                   className={inputClase}
                   value={form.montoLista}
-                  onChange={(e) => actualizarMontoLista(e.target.value)}
+                  onChange={actualizarMontoLista}
                 />
               </div>
             </div>

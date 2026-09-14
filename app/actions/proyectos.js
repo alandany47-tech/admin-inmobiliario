@@ -13,7 +13,9 @@ export async function getProyectosStats() {
   const supabase = await createClient();
   const [{ data, error }, { data: branding, error: errorBranding }] = await Promise.all([
     supabase.rpc("get_proyectos_con_estadisticas"),
-    supabase.from("proyectos").select("id, logo_proyecto_url, color_primario, color_secundario, estatus"),
+    supabase
+      .from("proyectos")
+      .select("id, logo_proyecto_url, logo_compacto_url, color_primario, color_secundario, estatus"),
   ]);
 
   if (error) {
@@ -36,6 +38,7 @@ export async function getProyectosStats() {
       totalPagado: Number(p.total_pagado),
       totalPartidasWbs: Number(p.total_partidas_wbs),
       logoProyectoUrl: b?.logo_proyecto_url ?? null,
+      logoCompactoUrl: b?.logo_compacto_url ?? null,
       colorPrimario: b?.color_primario ?? "#0f172a",
       colorSecundario: b?.color_secundario ?? "#2563eb",
       estatus: b?.estatus ?? "En Desarrollo",
@@ -50,7 +53,7 @@ export async function getProyectosBranding() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("proyectos")
-    .select("id, codigo, nombre, logo_proyecto_url, color_primario, color_secundario, estatus");
+    .select("id, codigo, nombre, logo_proyecto_url, logo_compacto_url, color_primario, color_secundario, estatus");
 
   if (error) {
     console.error("Error al consultar el branding de proyectos:", error.message);
@@ -96,6 +99,121 @@ export async function subirLogoProyecto(proyectoId, formData) {
 
   revalidatePath("/proyectos");
   return { ok: true, url: publicUrl };
+}
+
+/** Elimina el logo del proyecto del bucket "logos-proyectos" y limpia su referencia. */
+export async function eliminarLogoProyecto(proyectoId) {
+  const supabase = await createClient();
+
+  const { data: proyecto, error: errorConsulta } = await supabase
+    .from("proyectos")
+    .select("logo_proyecto_url")
+    .eq("id", proyectoId)
+    .single();
+
+  if (errorConsulta) {
+    return { error: `No se pudo consultar el proyecto: ${errorConsulta.message}` };
+  }
+
+  if (proyecto.logo_proyecto_url) {
+    const ruta = proyecto.logo_proyecto_url.split("/logos-proyectos/")[1];
+    if (ruta) {
+      const { error: errorBorrado } = await supabase.storage.from("logos-proyectos").remove([ruta]);
+      if (errorBorrado) {
+        return { error: `No se pudo eliminar el archivo: ${errorBorrado.message}` };
+      }
+    }
+  }
+
+  const { error: errorUpdate } = await supabase
+    .from("proyectos")
+    .update({ logo_proyecto_url: null })
+    .eq("id", proyectoId);
+
+  if (errorUpdate) {
+    return { error: `No se pudo limpiar la referencia del logo: ${errorUpdate.message}` };
+  }
+
+  revalidatePath("/proyectos");
+  revalidatePath("/configuracion/plantillas");
+  return { ok: true };
+}
+
+/** Sube el logo compacto del proyecto (variante reducida para Cotización/Estado de Cuenta) al mismo bucket "logos-proyectos". */
+export async function subirLogoCompactoProyecto(proyectoId, formData) {
+  const archivo = formData.get("archivo");
+  if (!archivo || archivo.size === 0) {
+    return { error: "Selecciona un archivo." };
+  }
+  if (archivo.type !== "image/png") {
+    return { error: "El logo debe ser un archivo PNG." };
+  }
+
+  const supabase = await createClient();
+  const ruta = `${proyectoId}/compacto-${Date.now()}-${archivo.name}`;
+
+  const { error: errorSubida } = await supabase.storage
+    .from("logos-proyectos")
+    .upload(ruta, archivo, { upsert: true });
+
+  if (errorSubida) {
+    return { error: `No se pudo subir el logo: ${errorSubida.message}` };
+  }
+
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("logos-proyectos").getPublicUrl(ruta);
+
+  const { error: errorUpdate } = await supabase
+    .from("proyectos")
+    .update({ logo_compacto_url: publicUrl })
+    .eq("id", proyectoId);
+
+  if (errorUpdate) {
+    return { error: `No se pudo guardar la referencia del logo: ${errorUpdate.message}` };
+  }
+
+  revalidatePath("/proyectos");
+  revalidatePath("/configuracion/plantillas");
+  return { ok: true, url: publicUrl };
+}
+
+/** Elimina el logo compacto del proyecto del bucket "logos-proyectos" y limpia su referencia. */
+export async function eliminarLogoCompactoProyecto(proyectoId) {
+  const supabase = await createClient();
+
+  const { data: proyecto, error: errorConsulta } = await supabase
+    .from("proyectos")
+    .select("logo_compacto_url")
+    .eq("id", proyectoId)
+    .single();
+
+  if (errorConsulta) {
+    return { error: `No se pudo consultar el proyecto: ${errorConsulta.message}` };
+  }
+
+  if (proyecto.logo_compacto_url) {
+    const ruta = proyecto.logo_compacto_url.split("/logos-proyectos/")[1];
+    if (ruta) {
+      const { error: errorBorrado } = await supabase.storage.from("logos-proyectos").remove([ruta]);
+      if (errorBorrado) {
+        return { error: `No se pudo eliminar el archivo: ${errorBorrado.message}` };
+      }
+    }
+  }
+
+  const { error: errorUpdate } = await supabase
+    .from("proyectos")
+    .update({ logo_compacto_url: null })
+    .eq("id", proyectoId);
+
+  if (errorUpdate) {
+    return { error: `No se pudo limpiar la referencia del logo: ${errorUpdate.message}` };
+  }
+
+  revalidatePath("/proyectos");
+  revalidatePath("/configuracion/plantillas");
+  return { ok: true };
 }
 
 /**

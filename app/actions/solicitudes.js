@@ -1,6 +1,23 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+import { XMLParser, XMLValidator } from "fast-xml-parser";
 import { createClient } from "@/lib/supabase/server";
+
+const TOPE_XML_BYTES = 500 * 1024;
+
+/** Busca recursivamente un atributo UUID (folio fiscal del timbre CFDI) en el XML ya parseado. */
+function buscarFolioFiscal(nodo) {
+  if (!nodo || typeof nodo !== "object") return null;
+  if (typeof nodo["@_UUID"] === "string") return nodo["@_UUID"];
+  for (const valor of Object.values(nodo)) {
+    if (valor && typeof valor === "object") {
+      const encontrado = buscarFolioFiscal(valor);
+      if (encontrado) return encontrado;
+    }
+  }
+  return null;
+}
 
 /** Arma un "concepto" resumen a partir de las descripciones de las partidas. */
 function resumirConcepto(partidas) {
@@ -65,7 +82,6 @@ export async function crearSolicitudPago(payload) {
     subtotal,
     iva,
     total,
-    fechaProgramada,
   } = payload;
 
   let proveedorId = proveedor?.id ?? null;
@@ -126,7 +142,7 @@ export async function crearSolicitudPago(payload) {
       subtotal,
       iva,
       total,
-      fecha_programada: fechaProgramada,
+      fecha_programada: new Date().toISOString().slice(0, 10),
     })
     .select()
     .single();
@@ -135,7 +151,63 @@ export async function crearSolicitudPago(payload) {
     return { error: `No se pudo crear la solicitud: ${errorSolicitud.message}` };
   }
 
-  return { folio: solicitud.folio, proveedorCreado };
+  return { id: solicitud.id, folio: solicitud.folio, proveedorCreado };
+}
+
+/**
+ * Guarda el XML de la factura (CFDI) como texto plano en `xml_factura` — no
+ * va a Storage porque pesa poco (10-30KB). Si el parseo tiene éxito y
+ * `num_factura` está vacío, lo autocompleta con el folio fiscal (UUID del
+ * timbre); si el parseo falla, no bloquea el guardado del XML.
+ */
+export async function subirXmlFactura(solicitudId, xmlContent) {
+  if (!xmlContent || typeof xmlContent !== "string") {
+    return { error: "Selecciona un archivo XML." };
+  }
+  if (new TextEncoder().encode(xmlContent).length > TOPE_XML_BYTES) {
+    return { error: "El archivo XML no debe superar 500KB." };
+  }
+
+  const validacion = XMLValidator.validate(xmlContent);
+  if (validacion !== true) {
+    return { error: "El archivo no es un XML válido." };
+  }
+
+  const supabase = await createClient();
+  const { data: actual, error: errorConsulta } = await supabase
+    .from("solicitudes_pago")
+    .select("num_factura")
+    .eq("id", solicitudId)
+    .single();
+
+  if (errorConsulta) {
+    return { error: `No se pudo consultar la solicitud: ${errorConsulta.message}` };
+  }
+
+  const cambios = { xml_factura: xmlContent };
+
+  if (!actual.num_factura) {
+    try {
+      const parser = new XMLParser({ ignoreAttributes: false });
+      const folioFiscal = buscarFolioFiscal(parser.parse(xmlContent));
+      if (folioFiscal) cambios.num_factura = folioFiscal;
+    } catch {
+      // Ignorado a propósito: el XML se guarda igual, num_factura sigue editable a mano.
+    }
+  }
+
+  const { error: errorUpdate } = await supabase
+    .from("solicitudes_pago")
+    .update(cambios)
+    .eq("id", solicitudId);
+
+  if (errorUpdate) {
+    return { error: `No se pudo guardar el XML de factura: ${errorUpdate.message}` };
+  }
+
+  revalidatePath("/control-maestro");
+  revalidatePath("/historial");
+  return { ok: true, numFactura: cambios.num_factura ?? actual.num_factura };
 }
 
 /** Obtiene una solicitud de pago con su proyecto y proveedor para la vista de detalle/PDF. */

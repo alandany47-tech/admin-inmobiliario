@@ -8,7 +8,7 @@ export async function getHistorialSolicitudes() {
   const { data, error } = await supabase
     .from("solicitudes_pago")
     .select(
-      "id, folio, created_at, metodo_pago, solicitante, subtotal, iva, total, estado, fecha_programada, fecha_pago, proyectos(id, codigo, nombre), proveedores(razon_social)"
+      "id, folio, created_at, metodo_pago, solicitante, subtotal, iva, total, estado, fecha_programada, fecha_pago, comprobante_url, comprobante_r2_key, xml_factura, num_factura, proyectos(id, codigo, nombre), proveedores(razon_social)"
     )
     .in("estado", ["Pagado", "Cancelado"])
     .order("created_at", { ascending: false });

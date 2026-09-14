@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Download, FileDown, RotateCcw, Search, X } from "lucide-react";
+import { CheckCircle2, Download, Eye, FileDown, RotateCcw, Search, X } from "lucide-react";
 import {
   getPlanDePagos,
   procesarPagoCobranza,
@@ -9,9 +9,12 @@ import {
   getDesglosePagosCliente,
   confirmarFirmaContrato,
 } from "@/app/actions/cobranza";
+import { getConfiguracionPlantilla } from "@/app/actions/plantillas";
+import { getConfiguracionEmpresa } from "@/app/actions/configuracionEmpresa";
 import { descargarReciboPago } from "@/components/PlantillaReciboPago";
-import { descargarEstadoCuenta } from "@/components/PlantillaEstadoCuenta";
+import { HojaEstadoCuenta, generarEstadoCuentaBlob } from "@/components/PlantillaEstadoCuenta";
 import PanelAlertasVencimiento from "@/components/PanelAlertasVencimiento";
+import CampoNumerico from "@/components/CampoNumerico";
 
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -51,7 +54,9 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
   const [plan, setPlan] = useState([]);
   const [cargandoPlan, setCargandoPlan] = useState(false);
   const [error, setError] = useState("");
-  const [exportando, setExportando] = useState(false);
+  const [cargandoPreview, setCargandoPreview] = useState(false);
+  const [previewEstadoCuenta, setPreviewEstadoCuenta] = useState(null);
+  const [descargandoPreview, setDescargandoPreview] = useState(false);
 
   const [abono, setAbono] = useState(null);
   const [reciboListo, setReciboListo] = useState(null);
@@ -119,12 +124,38 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
     setFirma(null);
   }
 
-  async function exportarEstadoCuenta() {
+  /** Antes de descargar el PDF directo, se arma una previsualización en pantalla con la misma plantilla que consume el PDF (HojaEstadoCuenta). */
+  async function abrirPreviewEstadoCuenta() {
     if (!contrato?.clientes?.id) return;
-    setExportando(true);
-    const contratosCliente = await getDesglosePagosCliente(contrato.clientes.id);
-    await descargarEstadoCuenta(contrato.clientes, contratosCliente);
-    setExportando(false);
+    setCargandoPreview(true);
+    const [contratosCliente, config, configEmpresa] = await Promise.all([
+      getDesglosePagosCliente(contrato.clientes.id),
+      getConfiguracionPlantilla("ESTADO_CUENTA"),
+      getConfiguracionEmpresa(),
+    ]);
+    setCargandoPreview(false);
+    setPreviewEstadoCuenta({
+      cliente: contrato.clientes,
+      contratos: contratosCliente,
+      config,
+      logoEmpresaUrl: configEmpresa?.logo_empresa_url,
+    });
+  }
+
+  async function confirmarDescargaEstadoCuenta() {
+    if (!previewEstadoCuenta) return;
+    setDescargandoPreview(true);
+    const blob = await generarEstadoCuentaBlob(previewEstadoCuenta.cliente, previewEstadoCuenta.contratos);
+    const url = URL.createObjectURL(blob);
+    const enlace = document.createElement("a");
+    enlace.href = url;
+    enlace.download = `estado-cuenta-${previewEstadoCuenta.cliente.nombre.replace(/\s+/g, "-").toLowerCase()}.pdf`;
+    document.body.appendChild(enlace);
+    enlace.click();
+    document.body.removeChild(enlace);
+    URL.revokeObjectURL(url);
+    setDescargandoPreview(false);
+    setPreviewEstadoCuenta(null);
   }
 
   function estatusVisual(fila) {
@@ -304,14 +335,63 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
                 )}
               <button
                 type="button"
-                onClick={exportarEstadoCuenta}
-                disabled={exportando}
+                onClick={abrirPreviewEstadoCuenta}
+                disabled={cargandoPreview}
                 className="flex items-center gap-1.5 rounded-full border border-black/[.08] px-3 py-1.5 text-xs font-medium text-zinc-600 hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
               >
-                <FileDown size={13} /> {exportando ? "Generando…" : "Estado de Cuenta"}
+                <FileDown size={13} /> {cargandoPreview ? "Cargando…" : "Estado de Cuenta"}
               </button>
             </div>
           </div>
+
+          {contrato.unidades && (
+            <div className="grid grid-cols-2 gap-3 rounded-lg border border-black/[.08] bg-black/[.02] p-4 text-sm sm:grid-cols-3 md:grid-cols-6 dark:border-white/[.145] dark:bg-white/[.03]">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Unidad
+                </span>
+                <span className="font-medium text-black dark:text-zinc-50">
+                  {contrato.unidades.codigo_unidad ?? "—"}
+                </span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Tipo de Uso
+                </span>
+                <span className="text-black dark:text-zinc-50">{contrato.unidades.tipo_uso ?? "—"}</span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Superficie
+                </span>
+                <span className="text-black dark:text-zinc-50">
+                  {contrato.unidades.superficie_m2 ? `${contrato.unidades.superficie_m2} m²` : "—"}
+                </span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Precio m²
+                </span>
+                <span className="text-black dark:text-zinc-50">
+                  {contrato.unidades.precio_m2 ? formatoMXN(contrato.unidades.precio_m2) : "—"}
+                </span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Monto de Lista
+                </span>
+                <span className="text-black dark:text-zinc-50">
+                  {contrato.unidades.monto_lista ? formatoMXN(contrato.unidades.monto_lista) : "—"}
+                </span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  Esquema
+                </span>
+                <span className="text-black dark:text-zinc-50">{contrato.unidades.esquema_unidad ?? "—"}</span>
+              </div>
+            </div>
+          )}
 
           {reciboListo && (
             <div className="flex items-center justify-between gap-3 rounded-lg border border-green-300 bg-green-50 px-4 py-3 text-sm dark:border-green-900 dark:bg-green-950/40">
@@ -420,13 +500,12 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
 
             <div className="flex flex-col gap-1.5">
               <label className={labelClase}>Monto</label>
-              <input
-                type="number"
+              <CampoNumerico
                 min="0"
                 step="0.01"
                 className={inputClase}
                 value={abono.monto}
-                onChange={(e) => setAbono((a) => ({ ...a, monto: e.target.value }))}
+                onChange={(texto) => setAbono((a) => ({ ...a, monto: texto }))}
               />
             </div>
 
@@ -550,6 +629,58 @@ export default function CapturaPagos({ contratos, cuentas, proyectos }) {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {previewEstadoCuenta && (
+        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 px-4 py-8">
+          <div className="flex max-h-full w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-black/[.08] bg-white dark:border-white/[.145] dark:bg-zinc-900">
+            <div className="flex items-center justify-between border-b border-black/[.08] px-6 py-4 dark:border-white/[.145]">
+              <div className="flex items-center gap-2">
+                <Eye size={16} className="text-zinc-500" />
+                <h3 className="text-base font-semibold text-black dark:text-zinc-50">
+                  Vista previa — Estado de Cuenta
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewEstadoCuenta(null)}
+                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto bg-zinc-100 p-6 dark:bg-zinc-950">
+              <div className="mx-auto w-fit shadow-lg">
+                <HojaEstadoCuenta
+                  cliente={previewEstadoCuenta.cliente}
+                  contratos={previewEstadoCuenta.contratos}
+                  config={previewEstadoCuenta.config}
+                  logoEmpresaUrl={previewEstadoCuenta.logoEmpresaUrl}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-black/[.08] px-6 py-4 dark:border-white/[.145]">
+              <button
+                type="button"
+                onClick={() => setPreviewEstadoCuenta(null)}
+                disabled={descargandoPreview}
+                className="rounded-full border border-black/[.08] px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarDescargaEstadoCuenta}
+                disabled={descargandoPreview}
+                className="flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50 dark:hover:bg-[#ccc]"
+              >
+                <Download size={14} /> {descargandoPreview ? "Generando…" : "Descargar PDF"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -250,3 +250,116 @@ export async function subirMiFirma(formData) {
   revalidatePath("/perfil");
   return { ok: true, url: publicUrl };
 }
+
+/** Elimina la firma del usuario autenticado del bucket "firmas-usuarios" y limpia su referencia vía el mismo RPC de subirMiFirma. */
+export async function eliminarMiFirma() {
+  const perfilActual = await getPerfilActual();
+  if (!perfilActual) {
+    return { error: "No autorizado." };
+  }
+
+  const supabase = await createClient();
+
+  if (perfilActual.firma_imagen_url) {
+    const ruta = perfilActual.firma_imagen_url.split("/firmas-usuarios/")[1];
+    if (ruta) {
+      const { error: errorBorrado } = await supabase.storage.from("firmas-usuarios").remove([ruta]);
+      if (errorBorrado) {
+        return { error: `No se pudo eliminar el archivo: ${errorBorrado.message}` };
+      }
+    }
+  }
+
+  const { error: errorRpc } = await supabase.rpc("actualizar_mi_firma", { p_firma_url: null });
+
+  if (errorRpc) {
+    return { error: `No se pudo eliminar la firma: ${errorRpc.message}` };
+  }
+
+  revalidatePath("/perfil");
+  return { ok: true };
+}
+
+/**
+ * Actualiza foto de perfil y/o puesto del usuario autenticado (nunca rol/activo)
+ * vía RPC security definer, ya que la policy de UPDATE de perfiles_usuario
+ * solo permite escribir a un ADMIN. Read-modify-write: cualquier campo omitido
+ * conserva su valor actual.
+ */
+export async function actualizarMiPerfilExtendido({ fotoUrl, puesto } = {}) {
+  const perfilActual = await getPerfilActual();
+  if (!perfilActual) {
+    return { error: "No autorizado." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("actualizar_mi_perfil_extendido", {
+    p_foto_url: fotoUrl !== undefined ? fotoUrl : perfilActual.foto_url,
+    p_puesto: puesto !== undefined ? puesto?.trim() || null : perfilActual.puesto,
+  });
+
+  if (error) {
+    return { error: `No se pudo actualizar el perfil: ${error.message}` };
+  }
+
+  revalidatePath("/perfil");
+  return { ok: true };
+}
+
+/** Sube la foto de perfil del usuario autenticado al bucket "fotos-usuarios". */
+export async function subirMiFoto(formData) {
+  const archivo = formData.get("archivo");
+  if (!archivo || archivo.size === 0) {
+    return { error: "Selecciona un archivo." };
+  }
+  if (!["image/png", "image/jpeg", "image/webp"].includes(archivo.type)) {
+    return { error: "La foto debe ser PNG, JPG o WEBP." };
+  }
+
+  const perfilActual = await getPerfilActual();
+  if (!perfilActual) {
+    return { error: "No autorizado." };
+  }
+
+  const supabase = await createClient();
+  const ruta = `${perfilActual.id}/${Date.now()}-${archivo.name}`;
+
+  const { error: errorSubida } = await supabase.storage
+    .from("fotos-usuarios")
+    .upload(ruta, archivo, { upsert: true, contentType: archivo.type });
+
+  if (errorSubida) {
+    return { error: `No se pudo subir la foto: ${errorSubida.message}` };
+  }
+
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from("fotos-usuarios").getPublicUrl(ruta);
+
+  const resultado = await actualizarMiPerfilExtendido({ fotoUrl: publicUrl });
+  if (resultado.error) return resultado;
+
+  return { ok: true, url: publicUrl };
+}
+
+/** Elimina la foto de perfil del usuario autenticado del bucket "fotos-usuarios" y limpia su referencia. */
+export async function eliminarMiFoto() {
+  const perfilActual = await getPerfilActual();
+  if (!perfilActual) {
+    return { error: "No autorizado." };
+  }
+
+  const supabase = await createClient();
+
+  if (perfilActual.foto_url) {
+    const ruta = perfilActual.foto_url.split("/fotos-usuarios/")[1];
+    if (ruta) {
+      const { error: errorBorrado } = await supabase.storage.from("fotos-usuarios").remove([ruta]);
+      if (errorBorrado) {
+        return { error: `No se pudo eliminar el archivo: ${errorBorrado.message}` };
+      }
+    }
+  }
+
+  return actualizarMiPerfilExtendido({ fotoUrl: null });
+}
