@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Search, CheckCircle2, UserPlus, Loader2, Eye, EyeOff } from "lucide-react";
+import { Search, CheckCircle2, ShieldCheck, UserPlus, Loader2, Eye, EyeOff } from "lucide-react";
 import { actualizarRolUsuario, actualizarEstatusUsuario, actualizarFirmaZona, crearUsuario } from "@/app/actions/auth";
+import ModalPermisosUsuario from "@/components/ModalPermisosUsuario";
 
 const NOMBRES_ROL = {
   SOLICITANTE: "Solicitante",
@@ -21,6 +22,7 @@ export default function PanelPermisos({ perfiles: perfilesIniciales, perfilActua
   const [creando, setCreando] = useState(false);
   const [errorCrear, setErrorCrear] = useState("");
   const [verPassword, setVerPassword] = useState(false);
+  const [usuarioPermisos, setUsuarioPermisos] = useState(null);
   const formCrearRef = useRef(null);
 
   function notificar(msg) {
@@ -250,15 +252,25 @@ export default function PanelPermisos({ perfiles: perfilesIniciales, perfilActua
                     </span>
                   </td>
                   <td className="px-6 py-3 text-right">
-                    <button
-                      type="button"
-                      disabled={guardandoId === p.id || esUnoMismo}
-                      onClick={() => alternarEstatus(p.id, p.activo)}
-                      title={esUnoMismo ? "No puedes desactivar tu propia cuenta" : undefined}
-                      className="rounded-md border border-black/[.08] px-3 py-1.5 text-xs font-medium transition hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:hover:bg-white/[.06]"
-                    >
-                      {p.activo ? "Desactivar" : "Activar"}
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setUsuarioPermisos(p)}
+                        title="Editar accesos por módulo"
+                        className="flex items-center gap-1.5 rounded-md border border-black/[.08] px-3 py-1.5 text-xs font-medium transition hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-white/[.06]"
+                      >
+                        <ShieldCheck size={13} /> Accesos
+                      </button>
+                      <button
+                        type="button"
+                        disabled={guardandoId === p.id || esUnoMismo}
+                        onClick={() => alternarEstatus(p.id, p.activo)}
+                        title={esUnoMismo ? "No puedes desactivar tu propia cuenta" : undefined}
+                        className="rounded-md border border-black/[.08] px-3 py-1.5 text-xs font-medium transition hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:hover:bg-white/[.06]"
+                      >
+                        {p.activo ? "Desactivar" : "Activar"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -266,6 +278,8 @@ export default function PanelPermisos({ perfiles: perfilesIniciales, perfilActua
           </tbody>
         </table>
       </div>
+
+      <ModalPermisosUsuario usuario={usuarioPermisos} onCerrar={() => setUsuarioPermisos(null)} />
     </div>
   );
 }

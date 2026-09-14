@@ -95,10 +95,20 @@ export default function ModalDesglosePagosWbs({ wbsId, titulo, open, onClose }) 
               <tbody>
                 {filas.map((f) => (
                   <tr
-                    key={f.solicitud_id}
+                    key={`${f.solicitud_id}-${f.es_reparto ? "reparto" : "directo"}-${f.monto}`}
                     className="border-b border-black/[.08] last:border-b-0 dark:border-white/[.145]"
                   >
-                    <td className="px-4 py-3 font-mono">{f.folio}</td>
+                    <td className="px-4 py-3 font-mono">
+                      {f.folio}
+                      {f.es_reparto && (
+                        <span
+                          title="Porción repartida de un gasto corporativo pagado con este folio"
+                          className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 font-sans text-[10px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-400"
+                        >
+                          Reparto
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">{f.proveedor_razon_social}</td>
                     <td className="px-4 py-3 max-w-xs truncate" title={f.concepto}>
                       {f.concepto}

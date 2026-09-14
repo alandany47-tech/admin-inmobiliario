@@ -6,6 +6,18 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const ROLES_VALIDOS = ["SOLICITANTE", "APROBADOR", "TESORERIA", "ADMIN"];
+const MODULOS_VALIDOS = [
+  "SOLICITUDES",
+  "TESORERIA",
+  "WBS",
+  "PROYECTOS",
+  "PROVEEDORES",
+  "UNIDADES",
+  "COTIZADOR",
+  "COBRANZA",
+  "CONFIGURACION",
+];
+const NIVELES_ACCESO_VALIDOS = ["sin_acceso", "lectura", "lectura_escritura"];
 
 /** Inicia sesión con correo/contraseña y redirige al dashboard. */
 export async function iniciarSesion(formData) {
@@ -201,6 +213,49 @@ export async function actualizarFirmaZona(id, zona) {
 
   if (error) {
     return { error: `No se pudo actualizar la zona de firma: ${error.message}` };
+  }
+
+  revalidatePath("/configuracion/permisos");
+  return { ok: true };
+}
+
+/** Lista los permisos por módulo de un usuario (filas ausentes = sin_acceso). */
+export async function getPermisosUsuario(usuarioId) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("permisos_usuario")
+    .select("modulo, nivel")
+    .eq("usuario_id", usuarioId);
+
+  if (error) {
+    console.error("Error al consultar permisos del usuario:", error.message);
+    return [];
+  }
+
+  return data;
+}
+
+/** Fija el nivel de acceso de un usuario a un módulo (solo ADMIN, aplicado también por RLS). */
+export async function actualizarPermisoModulo(usuarioId, modulo, nivel) {
+  if (!MODULOS_VALIDOS.includes(modulo)) {
+    return { error: "Módulo no válido." };
+  }
+  if (!NIVELES_ACCESO_VALIDOS.includes(nivel)) {
+    return { error: "Nivel de acceso no válido." };
+  }
+
+  const perfilActual = await getPerfilActual();
+  if (!perfilActual || perfilActual.rol !== "ADMIN") {
+    return { error: "No autorizado." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("permisos_usuario")
+    .upsert({ usuario_id: usuarioId, modulo, nivel }, { onConflict: "usuario_id,modulo" });
+
+  if (error) {
+    return { error: `No se pudo actualizar el permiso: ${error.message}` };
   }
 
   revalidatePath("/configuracion/permisos");
