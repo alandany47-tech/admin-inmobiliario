@@ -2,7 +2,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
-import { getPerfilActual } from "@/app/actions/auth";
+import { getPerfilActual, getPermisosUsuario } from "@/app/actions/auth";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,6 +21,7 @@ export const metadata = {
 
 export default async function RootLayout({ children }) {
   const perfil = await getPerfilActual();
+  const permisos = perfil && perfil.rol !== "ADMIN" ? await getPermisosUsuario(perfil.id) : [];
 
   return (
     <html
@@ -30,7 +31,7 @@ export default async function RootLayout({ children }) {
     >
       <body className="min-h-full flex">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {perfil && <Navbar perfil={perfil} />}
+          {perfil && <Navbar perfil={perfil} permisos={permisos} />}
           <div className="flex min-w-0 flex-1 flex-col">{children}</div>
         </ThemeProvider>
       </body>

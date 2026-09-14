@@ -30,12 +30,13 @@ import {
 import { cerrarSesion } from "@/app/actions/auth";
 
 /**
- * Menú agrupado por secciones (no solo por conveniencia visual: cada sección
- * es la unidad natural para restringir accesos por rol más adelante — un
- * ítem puede declarar `roles: [...]` para limitarse a esos roles, y una
- * sección se oculta sola si ninguno de sus ítems queda visible). Hoy solo
- * "Roles y Accesos" usa esa restricción (ADMIN); el resto queda sin
- * declarar, es decir visible a cualquier rol autenticado.
+ * Menú agrupado por secciones (cada sección se oculta sola si ninguno de sus
+ * ítems queda visible). Un ítem puede declarar `roles: [...]` para limitarse
+ * a esos roles (hoy solo "Roles y Accesos", exclusivo ADMIN) o `modulo: "..."`
+ * para requerir al menos nivel `lectura` en ese módulo vía `permisos_usuario`
+ * (ver migración 0038) — ADMIN siempre ve todo. Los ítems sin `roles` ni
+ * `modulo` (Dashboard, Historial) quedan visibles a cualquier rol
+ * autenticado: son vistas agregadas cuyo contenido ya se acota solo por RLS.
  */
 const SECCIONES = [
   {
@@ -50,37 +51,37 @@ const SECCIONES = [
     id: "proyectos",
     nombre: "Proyectos y Ventas",
     items: [
-      { href: "/proyectos", label: "Proyectos", icon: Building2 },
-      { href: "/unidades", label: "Unidades", icon: Home },
-      { href: "/cotizaciones", label: "Cotizador", icon: Calculator },
+      { href: "/proyectos", label: "Proyectos", icon: Building2, modulo: "PROYECTOS" },
+      { href: "/unidades", label: "Unidades", icon: Home, modulo: "UNIDADES" },
+      { href: "/cotizaciones", label: "Cotizador", icon: Calculator, modulo: "COTIZADOR" },
     ],
   },
   {
     id: "cobranza",
     nombre: "Cobranza",
     items: [
-      { href: "/cobranza/clientes", label: "Cartera de Clientes", icon: Users2 },
-      { href: "/cobranza/pagos", label: "Captura de Pagos", icon: HandCoins },
+      { href: "/cobranza/clientes", label: "Cartera de Clientes", icon: Users2, modulo: "COBRANZA" },
+      { href: "/cobranza/pagos", label: "Captura de Pagos", icon: HandCoins, modulo: "COBRANZA" },
     ],
   },
   {
     id: "tesoreria",
     nombre: "Tesorería",
     items: [
-      { href: "/solicitud", label: "Solicitudes", icon: FileText },
-      { href: "/autorizaciones", label: "Autorizaciones", icon: ShieldCheck },
-      { href: "/tesoreria", label: "Tesorería", icon: Landmark },
-      { href: "/control-maestro", label: "Control Maestro", icon: LayoutDashboard },
-      { href: "/wbs", label: "Presupuesto WBS", icon: Wallet },
-      { href: "/proveedores", label: "Proveedores", icon: Users },
+      { href: "/solicitud", label: "Solicitudes", icon: FileText, modulo: "SOLICITUDES" },
+      { href: "/autorizaciones", label: "Autorizaciones", icon: ShieldCheck, modulo: "SOLICITUDES" },
+      { href: "/tesoreria", label: "Tesorería", icon: Landmark, modulo: "TESORERIA" },
+      { href: "/control-maestro", label: "Control Maestro", icon: LayoutDashboard, modulo: "TESORERIA" },
+      { href: "/wbs", label: "Presupuesto WBS", icon: Wallet, modulo: "WBS" },
+      { href: "/proveedores", label: "Proveedores", icon: Users, modulo: "PROVEEDORES" },
     ],
   },
   {
     id: "configuracion",
     nombre: "Configuración",
     items: [
-      { href: "/configuracion/plantillas", label: "Plantillas PDF", icon: Settings },
-      { href: "/configuracion/importar-historico", label: "Importar Histórico", icon: Upload },
+      { href: "/configuracion/plantillas", label: "Plantillas PDF", icon: Settings, modulo: "CONFIGURACION" },
+      { href: "/configuracion/importar-historico", label: "Importar Histórico", icon: Upload, modulo: "CONFIGURACION" },
       { href: "/configuracion/permisos", label: "Roles y Accesos", icon: KeyRound, roles: ["ADMIN"] },
     ],
   },
@@ -99,14 +100,25 @@ function iniciales(nombre) {
 }
 
 /** Navegación lateral global del sistema DIPZ, agrupada por secciones. */
-export default function Navbar({ perfil }) {
+export default function Navbar({ perfil, permisos = [] }) {
   const pathname = usePathname();
   const { resolvedTheme, setTheme } = useTheme();
   const [montado, setMontado] = useState(false);
 
+  const esAdmin = perfil?.rol === "ADMIN";
+  const modulosConAcceso = new Set(
+    permisos.filter((p) => p.nivel !== "sin_acceso").map((p) => p.modulo)
+  );
+
+  function visible(item) {
+    if (item.roles) return item.roles.includes(perfil?.rol);
+    if (!item.modulo) return true;
+    return esAdmin || modulosConAcceso.has(item.modulo);
+  }
+
   const secciones = SECCIONES.map((s) => ({
     ...s,
-    items: s.items.filter((item) => !item.roles || item.roles.includes(perfil?.rol)),
+    items: s.items.filter(visible),
   })).filter((s) => s.items.length > 0);
 
   // Excepción necesaria: solo así se evita el desfase de hidratación entre
