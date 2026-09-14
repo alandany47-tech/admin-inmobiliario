@@ -1,0 +1,21 @@
+-- get_advisors (security) detectó que vista_cartera_clientes y
+-- wbs_presupuesto_resumen son vistas SECURITY DEFINER (dueño postgres,
+-- rolbypassrls=true) creadas antes del cierre de RLS de la migración 0038.
+-- Como vistas ignoran las policies de las tablas base sin importar quién
+-- las consulte, el cierre de RLS por módulo nunca les aplicó -- cualquier
+-- usuario autenticado (probado en vivo con marketing@dipz.mx, que solo
+-- tiene UNIDADES=lectura) podía leer la cartera de clientes completa
+-- (saldos, mora, montos de venta -- datos de COBRANZA) y el presupuesto
+-- WBS completo (datos de WBS) sin tener acceso a esos módulos.
+--
+-- Ambas vistas son joins simples sobre tablas normales, sin llamar a
+-- funciones que requieran privilegio elevado, así que basta con marcarlas
+-- `security_invoker = true` (soportado desde Postgres 15, este proyecto
+-- corre 17.6): la vista pasa a ejecutarse con los permisos de quien
+-- consulta, heredando el RLS real de contratos_venta/clientes/unidades/
+-- proyectos/planes_pago_cobranza y de wbs_catalog/solicitudes_pago/
+-- solicitud_reparto_corporativo respectivamente -- exactamente las
+-- policies que ya quedaron en 0038. No se toca la definición SQL de
+-- ninguna de las dos, solo la propiedad de seguridad de la vista.
+alter view public.vista_cartera_clientes set (security_invoker = true);
+alter view public.wbs_presupuesto_resumen set (security_invoker = true);
