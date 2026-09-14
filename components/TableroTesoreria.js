@@ -803,12 +803,13 @@ function TablaMovimientos({
         </p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-black/[.08] dark:border-white/[.145]">
-          <table className="w-full min-w-[720px] text-xs">
+          <table className="w-full min-w-[820px] text-xs">
             <thead>
               <tr className="border-b border-black/[.08] bg-black/[.03] text-left font-medium uppercase tracking-wide text-zinc-500 dark:border-white/[.145] dark:bg-white/[.04] dark:text-zinc-400">
                 <th className="px-3 py-2">Fecha</th>
                 <th className="px-3 py-2">Razón Social</th>
                 <th className="px-3 py-2">Concepto</th>
+                <th className="px-3 py-2">No. Factura</th>
                 <th className="px-3 py-2">Proyecto</th>
                 <th className="px-3 py-2 text-right">Monto</th>
                 <th className="px-3 py-2 text-right">Saldo</th>
@@ -828,6 +829,9 @@ function TablaMovimientos({
                     </td>
                     <td className="px-3 py-2">
                       <CeldaTruncada texto={m.concepto} titulo="Concepto" />
+                    </td>
+                    <td className="px-3 py-2 font-mono text-zinc-600 dark:text-zinc-400">
+                      {m.solicitudes_pago?.num_factura || "—"}
                     </td>
                     <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">
                       {m.proyectos ? `${m.proyectos.codigo}` : "—"}

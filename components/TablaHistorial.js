@@ -1,8 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, FileText } from "lucide-react";
+import { Download, FileText, Receipt } from "lucide-react";
+import { obtenerUrlComprobante } from "@/app/actions/comprobantesR2";
 import ModalVisorPDF from "@/components/ModalVisorPDF";
+import ModalVisorFactura from "@/components/ModalVisorFactura";
+import ModalVisorComprobante from "@/components/ModalVisorComprobante";
 import CeldaTruncada from "@/components/CeldaTruncada";
 
 const MESES = [
@@ -36,6 +39,8 @@ export default function TablaHistorial({ solicitudes, proyectos }) {
   const [anio, setAnio] = useState(String(hoy.getFullYear()));
   const [exportando, setExportando] = useState(false);
   const [pdfSolicitudId, setPdfSolicitudId] = useState(null);
+  const [facturaSolicitud, setFacturaSolicitud] = useState(null);
+  const [comprobanteSolicitudId, setComprobanteSolicitudId] = useState(null);
 
   const aniosDisponibles = useMemo(() => {
     const anios = new Set([new Date().getFullYear()]);
@@ -184,13 +189,37 @@ export default function TablaHistorial({ solicitudes, proyectos }) {
                     {formatoFecha(s.fecha_pago)}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setPdfSolicitudId(s.id)}
-                      className="flex items-center gap-1 text-xs text-zinc-500 hover:underline dark:text-zinc-400"
-                    >
-                      <FileText size={13} /> Ver PDF
-                    </button>
+                    <div className="flex items-center justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setPdfSolicitudId(s.id)}
+                        className="flex items-center gap-1 text-xs text-zinc-500 hover:underline dark:text-zinc-400"
+                      >
+                        <FileText size={13} /> Ver PDF
+                      </button>
+                      {s.xml_factura && (
+                        <button
+                          type="button"
+                          onClick={() => setFacturaSolicitud(s)}
+                          className="flex items-center gap-1 text-xs text-zinc-500 hover:underline dark:text-zinc-400"
+                        >
+                          <Receipt size={13} /> Ver Factura
+                        </button>
+                      )}
+                      {(s.comprobante_r2_key || s.comprobante_url) && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            s.comprobante_r2_key
+                              ? setComprobanteSolicitudId(s.id)
+                              : window.open(s.comprobante_url, "_blank", "noreferrer")
+                          }
+                          className="flex items-center gap-1 text-xs text-zinc-500 hover:underline dark:text-zinc-400"
+                        >
+                          <Download size={13} /> Ver Comprobante
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -203,6 +232,20 @@ export default function TablaHistorial({ solicitudes, proyectos }) {
         solicitudId={pdfSolicitudId}
         open={pdfSolicitudId !== null}
         onClose={() => setPdfSolicitudId(null)}
+      />
+
+      <ModalVisorFactura
+        open={facturaSolicitud !== null}
+        onClose={() => setFacturaSolicitud(null)}
+        xml={facturaSolicitud?.xml_factura}
+        folioSolicitud={facturaSolicitud?.folio}
+      />
+
+      <ModalVisorComprobante
+        itemId={comprobanteSolicitudId}
+        open={comprobanteSolicitudId !== null}
+        onClose={() => setComprobanteSolicitudId(null)}
+        onObtenerUrl={() => obtenerUrlComprobante(comprobanteSolicitudId)}
       />
     </div>
   );

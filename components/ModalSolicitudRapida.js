@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { X } from "lucide-react";
-import { crearSolicitudPago } from "@/app/actions/solicitudes";
+import { FileText, X } from "lucide-react";
+import { crearSolicitudPago, subirXmlFactura } from "@/app/actions/solicitudes";
 
 const METODOS_PAGO = ["Transferencia bancaria", "Efectivo"];
 
@@ -30,6 +30,7 @@ function proximoViernesISO() {
 export default function ModalSolicitudRapida({ proyectos, proveedores, wbsCatalog, onCreada, onCerrar }) {
   const [form, setForm] = useState(FORM_VACIO);
   const [aplicaIva, setAplicaIva] = useState(true);
+  const [xmlArchivo, setXmlArchivo] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
 
@@ -101,6 +102,14 @@ export default function ModalSolicitudRapida({ proyectos, proveedores, wbsCatalo
     if (resultado.error) {
       setError(resultado.error);
       return;
+    }
+
+    if (xmlArchivo) {
+      const xmlTexto = await xmlArchivo.text();
+      const resultadoXml = await subirXmlFactura(resultado.id, xmlTexto);
+      if (resultadoXml.error) {
+        window.alert(`La solicitud se creó, pero no se pudo guardar el XML: ${resultadoXml.error}`);
+      }
     }
 
     onCreada();

@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, FileText, X } from "lucide-react";
+import { Download, FileText, Receipt, X } from "lucide-react";
 import { getDesglosePagosWbs } from "@/app/actions/wbs";
+import { obtenerUrlComprobante } from "@/app/actions/comprobantesR2";
 import ModalVisorPDF from "@/components/ModalVisorPDF";
+import ModalVisorFactura from "@/components/ModalVisorFactura";
+import ModalVisorComprobante from "@/components/ModalVisorComprobante";
 
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -23,6 +26,8 @@ export default function ModalDesglosePagosWbs({ wbsId, titulo, open, onClose }) 
   const [filas, setFilas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [pdfSolicitudId, setPdfSolicitudId] = useState(null);
+  const [facturaFila, setFacturaFila] = useState(null);
+  const [comprobanteSolicitudId, setComprobanteSolicitudId] = useState(null);
   const [wbsEnCurso, setWbsEnCurso] = useState(null);
 
   // Ajuste de estado durante el render (no en el Effect) al abrir el modal
@@ -112,16 +117,34 @@ export default function ModalDesglosePagosWbs({ wbsId, titulo, open, onClose }) 
                         >
                           <FileText size={13} /> Ver PDF
                         </button>
-                        {f.comprobante_url && (
-                          <a
-                            href={f.comprobante_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
+                        {f.xml_factura && (
+                          <button
+                            type="button"
+                            onClick={() => setFacturaFila(f)}
+                            className="flex items-center gap-1 text-xs text-zinc-500 hover:underline dark:text-zinc-400"
                           >
-                            <Download size={13} /> Comprobante
-                          </a>
+                            <Receipt size={13} /> Ver Factura
+                          </button>
                         )}
+                        {(f.comprobante_r2_key || f.comprobante_url) &&
+                          (f.comprobante_r2_key ? (
+                            <button
+                              type="button"
+                              onClick={() => setComprobanteSolicitudId(f.solicitud_id)}
+                              className="flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
+                            >
+                              <Download size={13} /> Comprobante
+                            </button>
+                          ) : (
+                            <a
+                              href={f.comprobante_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400"
+                            >
+                              <Download size={13} /> Comprobante
+                            </a>
+                          ))}
                       </div>
                     </td>
                   </tr>
@@ -136,6 +159,20 @@ export default function ModalDesglosePagosWbs({ wbsId, titulo, open, onClose }) 
         solicitudId={pdfSolicitudId}
         open={pdfSolicitudId !== null}
         onClose={() => setPdfSolicitudId(null)}
+      />
+
+      <ModalVisorFactura
+        open={facturaFila !== null}
+        onClose={() => setFacturaFila(null)}
+        xml={facturaFila?.xml_factura}
+        folioSolicitud={facturaFila?.folio}
+      />
+
+      <ModalVisorComprobante
+        itemId={comprobanteSolicitudId}
+        open={comprobanteSolicitudId !== null}
+        onClose={() => setComprobanteSolicitudId(null)}
+        onObtenerUrl={() => obtenerUrlComprobante(comprobanteSolicitudId)}
       />
     </div>
   );

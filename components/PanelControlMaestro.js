@@ -7,10 +7,11 @@ import {
   cambiarEstadoGeneral,
   eliminarComprobante,
   eliminarSolicitud,
-  subirComprobante,
 } from "@/app/actions/controlMaestro";
+import { eliminarComprobanteR2, obtenerUrlComprobante, subirComprobanteR2 } from "@/app/actions/comprobantesR2";
 import ModalSolicitudRapida from "@/components/ModalSolicitudRapida";
 import ModalVisorPDF from "@/components/ModalVisorPDF";
+import ModalVisorComprobante from "@/components/ModalVisorComprobante";
 import CeldaTruncada from "@/components/CeldaTruncada";
 
 const ESTADOS = ["Por Autorizar", "Autorizado", "Pospuesto"];
@@ -54,6 +55,7 @@ export default function PanelControlMaestro({
   const [estado, setEstado] = useState("");
   const [modalAbierto, setModalAbierto] = useState(false);
   const [pdfSolicitudId, setPdfSolicitudId] = useState(null);
+  const [comprobanteSolicitudId, setComprobanteSolicitudId] = useState(null);
   const [actualizando, setActualizando] = useState({});
   const [subiendo, setSubiendo] = useState({});
   const [eliminandoComprobanteId, setEliminandoComprobanteId] = useState(null);
@@ -158,27 +160,30 @@ export default function PanelControlMaestro({
 
     const formData = new FormData();
     formData.append("archivo", archivo);
-    const resultado = await subirComprobante(id, formData);
+    const resultado = await subirComprobanteR2(id, formData);
 
     if (resultado.error) {
       setError(resultado.error);
     } else {
       setSolicitudes((filas) =>
-        filas.map((f) => (f.id === id ? { ...f, comprobante_url: resultado.url } : f))
+        filas.map((f) => (f.id === id ? { ...f, comprobante_r2_key: resultado.key } : f))
       );
       router.refresh();
     }
     setSubiendo((s) => ({ ...s, [id]: false }));
   }
 
-  async function eliminarArchivo(id) {
+  async function eliminarArchivo(solicitud) {
     if (!window.confirm("¿Eliminar el comprobante de pago? Esta acción no se puede deshacer.")) {
       return;
     }
 
+    const id = solicitud.id;
     setEliminandoComprobanteId(id);
     setError("");
-    const resultado = await eliminarComprobante(id);
+    const resultado = solicitud.comprobante_r2_key
+      ? await eliminarComprobanteR2(id)
+      : await eliminarComprobante(id);
     setEliminandoComprobanteId(null);
 
     if (resultado.error) {
@@ -186,7 +191,9 @@ export default function PanelControlMaestro({
       return;
     }
 
-    setSolicitudes((filas) => filas.map((f) => (f.id === id ? { ...f, comprobante_url: null } : f)));
+    setSolicitudes((filas) =>
+      filas.map((f) => (f.id === id ? { ...f, comprobante_url: null, comprobante_r2_key: null } : f))
+    );
     router.refresh();
   }
 
@@ -447,27 +454,42 @@ export default function PanelControlMaestro({
                       <div className="flex items-center gap-2">
                         <label className="flex cursor-pointer items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-400">
                           <Paperclip size={12} />
-                          {subiendo[s.id] ? "Subiendo…" : s.comprobante_url ? "Reemplazar" : "Adjuntar"}
+                          {subiendo[s.id]
+                            ? "Subiendo…"
+                            : s.comprobante_r2_key || s.comprobante_url
+                              ? "Reemplazar"
+                              : "Adjuntar"}
                           <input
                             type="file"
+                            accept="application/pdf"
                             className="hidden"
                             onChange={(e) => subirArchivo(s.id, e.target.files?.[0])}
                           />
                         </label>
-                        {s.comprobante_url && (
+                        {(s.comprobante_r2_key || s.comprobante_url) && (
                           <>
-                            <a
-                              href={s.comprobante_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-zinc-500 hover:underline dark:text-zinc-400"
-                            >
-                              Ver
-                            </a>
+                            {s.comprobante_r2_key ? (
+                              <button
+                                type="button"
+                                onClick={() => setComprobanteSolicitudId(s.id)}
+                                className="text-xs text-zinc-500 hover:underline dark:text-zinc-400"
+                              >
+                                Ver
+                              </button>
+                            ) : (
+                              <a
+                                href={s.comprobante_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs text-zinc-500 hover:underline dark:text-zinc-400"
+                              >
+                                Ver
+                              </a>
+                            )}
                             <button
                               type="button"
                               disabled={eliminandoComprobanteId === s.id}
-                              onClick={() => eliminarArchivo(s.id)}
+                              onClick={() => eliminarArchivo(s)}
                               className="text-zinc-400 hover:text-red-600 disabled:opacity-50 dark:hover:text-red-400"
                             >
                               <Trash2 size={12} />
@@ -520,6 +542,13 @@ export default function PanelControlMaestro({
         solicitudId={pdfSolicitudId}
         open={pdfSolicitudId !== null}
         onClose={() => setPdfSolicitudId(null)}
+      />
+
+      <ModalVisorComprobante
+        itemId={comprobanteSolicitudId}
+        open={comprobanteSolicitudId !== null}
+        onClose={() => setComprobanteSolicitudId(null)}
+        onObtenerUrl={() => obtenerUrlComprobante(comprobanteSolicitudId)}
       />
     </div>
   );

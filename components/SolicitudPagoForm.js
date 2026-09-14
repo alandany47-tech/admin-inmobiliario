@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CalendarClock, CheckCircle2, Plus, Search, Trash2, Users, X } from "lucide-react";
-import { crearSolicitudPago, getFolioPreview } from "@/app/actions/solicitudes";
+import { AlertTriangle, CalendarClock, CheckCircle2, FileText, Plus, Search, Trash2, Users, X } from "lucide-react";
+import { crearSolicitudPago, getFolioPreview, subirXmlFactura } from "@/app/actions/solicitudes";
 import { compararCodigoWbsNatural, construirRutaWbs } from "@/lib/wbs";
 
 const TASA_IVA = 0.16;
@@ -76,6 +76,7 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
   const [aplicaIva, setAplicaIva] = useState(true);
   const [esCorporativo, setEsCorporativo] = useState(false);
   const [folioPreview, setFolioPreview] = useState(null);
+  const [xmlArchivo, setXmlArchivo] = useState(null);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
@@ -295,6 +296,14 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
       return;
     }
 
+    if (xmlArchivo) {
+      const xmlTexto = await xmlArchivo.text();
+      const resultadoXml = await subirXmlFactura(resultado.id, xmlTexto);
+      if (resultadoXml.error) {
+        setError(`Solicitud ${resultado.folio} creada, pero no se pudo guardar el XML: ${resultadoXml.error}`);
+      }
+    }
+
     if (resultado.proveedorCreado) {
       setProveedores((prev) =>
         [...prev, resultado.proveedorCreado].sort((a, b) =>
@@ -305,6 +314,7 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
 
     setForm(FORM_VACIO);
     setPartidas([partidaVacia()]);
+    setXmlArchivo(null);
     setAplicaIva(true);
     setEsCorporativo(false);
     setProveedorId("");
@@ -537,6 +547,20 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
                 onChange={(e) => actualizarCampo("numFactura", e.target.value)}
               />
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5 sm:max-w-xs">
+            <label className={labelClase}>XML de Factura (opcional)</label>
+            <label className={`${inputClase} flex cursor-pointer items-center gap-2 text-zinc-600 dark:text-zinc-400`}>
+              <FileText size={14} />
+              {xmlArchivo ? xmlArchivo.name : "Selecciona un archivo .xml…"}
+              <input
+                type="file"
+                accept=".xml,text/xml"
+                className="hidden"
+                onChange={(e) => setXmlArchivo(e.target.files?.[0] ?? null)}
+              />
+            </label>
           </div>
 
           <div className="flex flex-col gap-1.5 sm:max-w-xs">
