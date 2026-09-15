@@ -10,6 +10,7 @@ import {
   ChevronsUp,
   FileDown,
   Pencil,
+  Receipt,
   Save,
   Upload,
   X,
@@ -249,9 +250,11 @@ function NodoWbs({
                 e.stopPropagation();
                 onVerDesglose(nodo);
               }}
-              className="hover:underline"
+              title="Ver desglose de pagos cargados a esta partida"
+              className="inline-flex items-center gap-1 text-blue-600 hover:underline dark:text-blue-400"
             >
               {formatoMXN(esHoja ? nodo.ejercido : nodo.ejercidoAgg)}
+              <Receipt size={12} />
             </button>
           )}
         </td>
@@ -965,6 +968,7 @@ export default function PanelPresupuestoWbs({ proyectos }) {
                     <button
                       type="button"
                       onClick={() => cambiarOrden("ejercido")}
+                      title="Los montos de esta columna se pueden abrir para ver el desglose de pagos"
                       className="ml-auto flex items-center gap-1 uppercase tracking-wide hover:text-zinc-800 dark:hover:text-zinc-200"
                     >
                       Ejercido <IconoOrden activo={orden.criterio === "ejercido"} direccion={orden.direccion} />

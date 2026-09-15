@@ -1,14 +1,16 @@
 import { getProyectos } from "@/app/actions/test";
 import { getProveedores } from "@/app/actions/proveedores";
 import { getWbsCatalog } from "@/app/actions/wbs";
+import { getPerfilActual } from "@/app/actions/auth";
 import SolicitudPagoForm from "@/components/SolicitudPagoForm";
 
 /** Pantalla de captura de solicitudes de pago. */
 export default async function SolicitudPage() {
-  const [proyectos, proveedores, wbsCatalog] = await Promise.all([
+  const [proyectos, proveedores, wbsCatalog, perfil] = await Promise.all([
     getProyectos(),
     getProveedores(),
     getWbsCatalog(),
+    getPerfilActual(),
   ]);
 
   return (
@@ -21,6 +23,7 @@ export default async function SolicitudPage() {
           proyectos={proyectos}
           proveedores={proveedores.filter((p) => p.estatus === "Activo")}
           wbsCatalog={wbsCatalog}
+          solicitanteNombre={perfil?.nombre ?? ""}
         />
       </main>
     </div>

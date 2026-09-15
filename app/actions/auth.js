@@ -16,6 +16,27 @@ const MODULOS_VALIDOS = [
   "COTIZADOR",
   "COBRANZA",
   "CONFIGURACION",
+  // A diferencia de los 9 de arriba, este no gatea una sección del navbar:
+  // gatea la ACCIÓN de autorizar dentro de autorizar_solicitud() y
+  // autorizar_orden_cambio_wbs() (0046) — un candado real en el RPC, no
+  // cosmético como las claves de vista de 0045.
+  "AUTORIZACIONES_GLOBAL",
+];
+// Claves finas por vista (0045): cada una vive bajo un módulo de la lista de
+// arriba, que sigue siendo el piso real de acceso a datos vía RLS. Una fila
+// ausente para una de estas claves en permisos_usuario significa "hereda el
+// nivel del módulo padre" — ver VISTAS_POR_MODULO en ModalPermisosUsuario.js.
+const VISTAS_VALIDAS = [
+  "SOLICITUDES_CREAR",
+  "SOLICITUDES_MIS",
+  "SOLICITUDES_AUTORIZACIONES",
+  "SOLICITUDES_HISTORIAL",
+  "WBS_PRESUPUESTO",
+  "WBS_ORDENES_CAMBIO",
+  "TESORERIA_DISPERSION",
+  "TESORERIA_CONTROL_MAESTRO",
+  "CONFIGURACION_PLANTILLAS",
+  "CONFIGURACION_IMPORTAR",
 ];
 const NIVELES_ACCESO_VALIDOS = ["sin_acceso", "lectura", "lectura_escritura"];
 
@@ -219,6 +240,29 @@ export async function actualizarFirmaZona(id, zona) {
   return { ok: true };
 }
 
+/**
+ * true si el usuario autenticado puede autorizar solicitudes de pago y
+ * órdenes de cambio WBS (0046) — espejo en JS del check que ya hacen
+ * autorizar_solicitud() y autorizar_orden_cambio_wbs() vía tiene_acceso(),
+ * para poder ocultar/deshabilitar los botones de autorizar en la UI en vez
+ * de dejar que el usuario los presione y reciba el error del RPC.
+ */
+export async function esAutorizadorGlobal() {
+  const perfil = await getPerfilActual();
+  if (!perfil) return false;
+  if (perfil.rol === "ADMIN") return true;
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("permisos_usuario")
+    .select("nivel")
+    .eq("usuario_id", perfil.id)
+    .eq("modulo", "AUTORIZACIONES_GLOBAL")
+    .maybeSingle();
+
+  return data?.nivel === "lectura_escritura";
+}
+
 /** Lista los permisos por módulo de un usuario (filas ausentes = sin_acceso). */
 export async function getPermisosUsuario(usuarioId) {
   const supabase = await createClient();
@@ -235,9 +279,14 @@ export async function getPermisosUsuario(usuarioId) {
   return data;
 }
 
-/** Fija el nivel de acceso de un usuario a un módulo (solo ADMIN, aplicado también por RLS). */
-export async function actualizarPermisoModulo(usuarioId, modulo, nivel) {
-  if (!MODULOS_VALIDOS.includes(modulo)) {
+/**
+ * Fija el nivel de acceso de un usuario a un módulo o a una vista fina
+ * (solo ADMIN, aplicado también por RLS). `clave` acepta ambos: los 9
+ * módulos base (gatean datos vía RLS) y las claves de vista de 0045
+ * (solo controlan qué se muestra en el navbar — ver Navbar.js).
+ */
+export async function actualizarPermisoModulo(usuarioId, clave, nivel) {
+  if (!MODULOS_VALIDOS.includes(clave) && !VISTAS_VALIDAS.includes(clave)) {
     return { error: "Módulo no válido." };
   }
   if (!NIVELES_ACCESO_VALIDOS.includes(nivel)) {
@@ -252,10 +301,40 @@ export async function actualizarPermisoModulo(usuarioId, modulo, nivel) {
   const supabase = await createClient();
   const { error } = await supabase
     .from("permisos_usuario")
-    .upsert({ usuario_id: usuarioId, modulo, nivel }, { onConflict: "usuario_id,modulo" });
+    .upsert({ usuario_id: usuarioId, modulo: clave, nivel }, { onConflict: "usuario_id,modulo" });
 
   if (error) {
     return { error: `No se pudo actualizar el permiso: ${error.message}` };
+  }
+
+  revalidatePath("/configuracion/permisos");
+  return { ok: true };
+}
+
+/**
+ * Quita el override de una vista para que vuelva a heredar el nivel de su
+ * módulo padre (solo ADMIN). No aplica a los 9 módulos base: esos no tienen
+ * padre del cual heredar, así que fila ausente = sin_acceso para ellos.
+ */
+export async function heredarPermisoVista(usuarioId, vista) {
+  if (!VISTAS_VALIDAS.includes(vista)) {
+    return { error: "Vista no válida." };
+  }
+
+  const perfilActual = await getPerfilActual();
+  if (!perfilActual || perfilActual.rol !== "ADMIN") {
+    return { error: "No autorizado." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("permisos_usuario")
+    .delete()
+    .eq("usuario_id", usuarioId)
+    .eq("modulo", vista);
+
+  if (error) {
+    return { error: `No se pudo restablecer la herencia: ${error.message}` };
   }
 
   revalidatePath("/configuracion/permisos");

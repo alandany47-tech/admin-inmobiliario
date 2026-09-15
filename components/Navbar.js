@@ -45,6 +45,14 @@ import { cerrarSesion } from "@/app/actions/auth";
  * incluyendo "operaciones" si se le da ese acceso) ve el historial completo;
  * "Mis Solicitudes" es la contraparte personal — cualquiera con acceso a
  * Solicitudes ve ahí solo lo propio, sin importar su rol.
+ *
+ * Un ítem puede además declarar `vista: "..."` (0045) cuando varias vistas
+ * comparten un solo `modulo` de RLS (SOLICITUDES, WBS, TESORERIA,
+ * CONFIGURACION) — permite que un ADMIN oculte una vista puntual (ej. solo
+ * "Autorizaciones") sin tocar el acceso a datos del módulo completo. Fila
+ * ausente en permisos_usuario para esa `vista` = hereda el nivel del
+ * `modulo`, así que por default nada cambia hasta que un ADMIN capture una
+ * excepción explícita en /configuracion/permisos.
  */
 const SECCIONES = [
   {
@@ -52,7 +60,13 @@ const SECCIONES = [
     nombre: "Principal",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: TrendingUp },
-      { href: "/historial", label: "Historial General", icon: Table, modulo: "SOLICITUDES" },
+      {
+        href: "/historial",
+        label: "Historial General",
+        icon: Table,
+        modulo: "SOLICITUDES",
+        vista: "SOLICITUDES_HISTORIAL",
+      },
     ],
   },
   {
@@ -76,13 +90,37 @@ const SECCIONES = [
     id: "tesoreria",
     nombre: "Tesorería",
     items: [
-      { href: "/solicitud", label: "Solicitudes", icon: FileText, modulo: "SOLICITUDES" },
-      { href: "/mis-solicitudes", label: "Mis Solicitudes", icon: ClipboardList, modulo: "SOLICITUDES" },
-      { href: "/autorizaciones", label: "Autorizaciones", icon: ShieldCheck, modulo: "SOLICITUDES" },
-      { href: "/tesoreria", label: "Tesorería", icon: Landmark, modulo: "TESORERIA" },
-      { href: "/control-maestro", label: "Control Maestro", icon: LayoutDashboard, modulo: "TESORERIA" },
-      { href: "/wbs", label: "Presupuesto WBS", icon: Wallet, modulo: "WBS" },
-      { href: "/wbs/ordenes-cambio", label: "Órdenes de Cambio WBS", icon: ShieldCheck, modulo: "WBS" },
+      { href: "/solicitud", label: "Solicitudes", icon: FileText, modulo: "SOLICITUDES", vista: "SOLICITUDES_CREAR" },
+      {
+        href: "/mis-solicitudes",
+        label: "Mis Solicitudes",
+        icon: ClipboardList,
+        modulo: "SOLICITUDES",
+        vista: "SOLICITUDES_MIS",
+      },
+      {
+        href: "/autorizaciones",
+        label: "Autorizaciones",
+        icon: ShieldCheck,
+        modulo: "SOLICITUDES",
+        vista: "SOLICITUDES_AUTORIZACIONES",
+      },
+      { href: "/tesoreria", label: "Tesorería", icon: Landmark, modulo: "TESORERIA", vista: "TESORERIA_DISPERSION" },
+      {
+        href: "/control-maestro",
+        label: "Control Maestro",
+        icon: LayoutDashboard,
+        modulo: "TESORERIA",
+        vista: "TESORERIA_CONTROL_MAESTRO",
+      },
+      { href: "/wbs", label: "Presupuesto WBS", icon: Wallet, modulo: "WBS", vista: "WBS_PRESUPUESTO" },
+      {
+        href: "/wbs/ordenes-cambio",
+        label: "Órdenes de Cambio WBS",
+        icon: ShieldCheck,
+        modulo: "WBS",
+        vista: "WBS_ORDENES_CAMBIO",
+      },
       { href: "/proveedores", label: "Proveedores", icon: Users, modulo: "PROVEEDORES" },
     ],
   },
@@ -90,8 +128,20 @@ const SECCIONES = [
     id: "configuracion",
     nombre: "Configuración",
     items: [
-      { href: "/configuracion/plantillas", label: "Plantillas PDF", icon: Settings, modulo: "CONFIGURACION" },
-      { href: "/configuracion/importar-historico", label: "Importar Histórico", icon: Upload, modulo: "CONFIGURACION" },
+      {
+        href: "/configuracion/plantillas",
+        label: "Plantillas PDF",
+        icon: Settings,
+        modulo: "CONFIGURACION",
+        vista: "CONFIGURACION_PLANTILLAS",
+      },
+      {
+        href: "/configuracion/importar-historico",
+        label: "Importar Histórico",
+        icon: Upload,
+        modulo: "CONFIGURACION",
+        vista: "CONFIGURACION_IMPORTAR",
+      },
       { href: "/configuracion/permisos", label: "Roles y Accesos", icon: KeyRound, roles: ["ADMIN"] },
     ],
   },
@@ -116,14 +166,15 @@ export default function Navbar({ perfil, permisos = [] }) {
   const [montado, setMontado] = useState(false);
 
   const esAdmin = perfil?.rol === "ADMIN";
-  const modulosConAcceso = new Set(
-    permisos.filter((p) => p.nivel !== "sin_acceso").map((p) => p.modulo)
-  );
+  const nivelPorClave = new Map(permisos.map((p) => [p.modulo, p.nivel]));
 
   function visible(item) {
     if (item.roles) return item.roles.includes(perfil?.rol);
     if (!item.modulo) return true;
-    return esAdmin || modulosConAcceso.has(item.modulo);
+    if (esAdmin) return true;
+    // Sin fila para la vista fina, hereda el nivel del módulo padre.
+    const nivel = (item.vista && nivelPorClave.get(item.vista)) ?? nivelPorClave.get(item.modulo);
+    return nivel === "lectura" || nivel === "lectura_escritura";
   }
 
   const secciones = SECCIONES.map((s) => ({

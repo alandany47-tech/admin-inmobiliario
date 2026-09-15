@@ -1,9 +1,13 @@
 import { getSolicitudesPorAutorizar } from "@/app/actions/autorizaciones";
+import { esAutorizadorGlobal } from "@/app/actions/auth";
 import TablaAutorizaciones from "@/components/TablaAutorizaciones";
 
 /** Dashboard de autorización de solicitudes de pago. */
 export default async function AutorizacionesPage() {
-  const solicitudes = await getSolicitudesPorAutorizar();
+  const [solicitudes, puedeAutorizar] = await Promise.all([
+    getSolicitudesPorAutorizar(),
+    esAutorizadorGlobal(),
+  ]);
 
   return (
     <div className="flex flex-col flex-1 items-center bg-zinc-50 font-sans dark:bg-black">
@@ -11,7 +15,7 @@ export default async function AutorizacionesPage() {
         <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
           Autorización de Solicitudes de Pago
         </h1>
-        <TablaAutorizaciones solicitudes={solicitudes} />
+        <TablaAutorizaciones solicitudes={solicitudes} puedeAutorizar={puedeAutorizar} />
       </main>
     </div>
   );

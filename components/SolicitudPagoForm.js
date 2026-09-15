@@ -31,6 +31,28 @@ function partidaVacia() {
   return { id: crypto.randomUUID(), cantidad: "", descripcion: "", precioUnitario: "" };
 }
 
+/**
+ * Extrae del CFDI únicamente Serie+Folio y SubTotal (no toca proveedor ni
+ * conceptos): son los dos datos que hoy se capturan a mano y que ya vienen
+ * en el propio comprobante. Si el XML no es un CFDI válido o no trae esos
+ * atributos, regresa null y el formulario sigue igual que antes.
+ */
+function extraerDatosXmlFactura(xmlTexto) {
+  try {
+    const doc = new DOMParser().parseFromString(xmlTexto, "text/xml");
+    if (doc.querySelector("parsererror")) return null;
+    const comprobante = doc.documentElement;
+    const serie = comprobante?.getAttribute("Serie") ?? "";
+    const folio = comprobante?.getAttribute("Folio") ?? "";
+    const subTotal = parseFloat(comprobante?.getAttribute("SubTotal") ?? "");
+    const numFactura = `${serie}${folio}`.trim();
+    if (!numFactura && !Number.isFinite(subTotal)) return null;
+    return { numFactura, subTotal: Number.isFinite(subTotal) ? subTotal : null };
+  } catch {
+    return null;
+  }
+}
+
 function subtotalPartida(p) {
   const cantidad = parseFloat(p.cantidad) || 0;
   const precio = parseFloat(p.precioUnitario) || 0;
@@ -48,7 +70,12 @@ const fechaHoy = new Date().toLocaleDateString("es-MX", {
 });
 
 /** Formulario de captura de solicitudes de pago con alta de proveedores en vivo. */
-export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresIniciales, wbsCatalog }) {
+export default function SolicitudPagoForm({
+  proyectos,
+  proveedores: proveedoresIniciales,
+  wbsCatalog,
+  solicitanteNombre = "",
+}) {
   const [proveedores, setProveedores] = useState(proveedoresIniciales);
   const [modoProveedor, setModoProveedor] = useState("existente");
   const [proveedorId, setProveedorId] = useState("");
@@ -56,7 +83,7 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
   const [proveedorAbierto, setProveedorAbierto] = useState(false);
   const proveedorBoxRef = useRef(null);
   const [proveedorNuevo, setProveedorNuevo] = useState(PROVEEDOR_NUEVO_VACIO);
-  const [form, setForm] = useState(FORM_VACIO);
+  const [form, setForm] = useState({ ...FORM_VACIO, solicitante: solicitanteNombre });
   const [partidas, setPartidas] = useState([partidaVacia()]);
   const [aplicaIva, setAplicaIva] = useState(true);
   const [esCorporativo, setEsCorporativo] = useState(false);
@@ -150,6 +177,40 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
 
   function actualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }));
+  }
+
+  /**
+   * Al elegir el XML, precarga # de factura y monto (subtotal) si el usuario
+   * todavía no los ha capturado — nunca sobreescribe lo ya escrito a mano.
+   * El monto se precarga como una sola partida solo si la partida sigue en
+   * blanco (el usuario no ha empezado a capturar conceptos).
+   */
+  async function manejarSeleccionXml(archivo) {
+    setXmlArchivo(archivo);
+    if (!archivo) return;
+
+    const datos = extraerDatosXmlFactura(await archivo.text());
+    if (!datos) return;
+
+    if (datos.numFactura) {
+      setForm((f) => (f.numFactura.trim() ? f : { ...f, numFactura: datos.numFactura }));
+    }
+
+    if (datos.subTotal != null) {
+      setPartidas((prev) => {
+        const soloUnaEnBlanco =
+          prev.length === 1 && !prev[0].descripcion && !prev[0].cantidad && !prev[0].precioUnitario;
+        if (!soloUnaEnBlanco) return prev;
+        return [
+          {
+            ...prev[0],
+            cantidad: "1",
+            descripcion: datos.numFactura ? `Factura ${datos.numFactura}` : "Importado de XML",
+            precioUnitario: String(datos.subTotal),
+          },
+        ];
+      });
+    }
   }
 
   // Al cambiar (o limpiar) el proyecto, la partida WBS ya seleccionada deja
@@ -296,7 +357,7 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
       );
     }
 
-    setForm(FORM_VACIO);
+    setForm({ ...FORM_VACIO, solicitante: solicitanteNombre });
     setPartidas([partidaVacia()]);
     setXmlArchivo(null);
     setAplicaIva(true);
@@ -513,14 +574,12 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
 
             <div className="flex flex-col gap-1.5">
               <label className={labelClase}>Solicitante</label>
-              <input
-                type="text"
-                maxLength={10}
-                placeholder="Ej. AB"
-                className={inputClase}
-                value={form.solicitante}
-                onChange={(e) => actualizarCampo("solicitante", e.target.value.toUpperCase())}
-              />
+              <div
+                className={`${inputClase} bg-black/[.03] text-zinc-600 dark:bg-white/[.04] dark:text-zinc-400`}
+                title="Se toma del usuario que inició sesión"
+              >
+                {form.solicitante || "—"}
+              </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -543,7 +602,7 @@ export default function SolicitudPagoForm({ proyectos, proveedores: proveedoresI
                 type="file"
                 accept=".xml,text/xml"
                 className="hidden"
-                onChange={(e) => setXmlArchivo(e.target.files?.[0] ?? null)}
+                onChange={(e) => manejarSeleccionXml(e.target.files?.[0] ?? null)}
               />
             </label>
           </div>

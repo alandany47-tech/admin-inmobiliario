@@ -1,14 +1,19 @@
 import { getOrdenesCambioPendientes } from "@/app/actions/wbs";
-import { getPerfilActual } from "@/app/actions/auth";
+import { getPerfilActual, esAutorizadorGlobal } from "@/app/actions/auth";
 import TablaOrdenesCambioWbs from "@/components/TablaOrdenesCambioWbs";
 
 /**
  * Autorización de Órdenes de Cambio de presupuesto WBS: quien las propone no
  * puede autorizarlas, salvo ADMIN (que sí puede autorizar las suyas — regla
- * espejo de la RPC `autorizar_orden_cambio_wbs`, que usa `es_admin()`).
+ * espejo de la RPC `autorizar_orden_cambio_wbs`, que usa `es_admin()`). Solo
+ * quien tiene el permiso de Autorizador Global (0046) puede resolverlas.
  */
 export default async function OrdenesCambioWbsPage() {
-  const [ordenes, perfil] = await Promise.all([getOrdenesCambioPendientes(), getPerfilActual()]);
+  const [ordenes, perfil, puedeAutorizar] = await Promise.all([
+    getOrdenesCambioPendientes(),
+    getPerfilActual(),
+    esAutorizadorGlobal(),
+  ]);
 
   return (
     <div className="flex flex-col flex-1 items-center bg-zinc-50 font-sans dark:bg-black">
@@ -20,6 +25,7 @@ export default async function OrdenesCambioWbsPage() {
           ordenes={ordenes}
           usuarioActualId={perfil?.id ?? null}
           esAdmin={perfil?.rol === "ADMIN"}
+          puedeAutorizar={puedeAutorizar}
         />
       </main>
     </div>

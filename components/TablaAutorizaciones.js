@@ -15,7 +15,7 @@ function formatoFecha(fecha) {
 }
 
 /** Tabla de autorización de solicitudes de pago con acciones de estado por renglón. */
-export default function TablaAutorizaciones({ solicitudes: solicitudesIniciales }) {
+export default function TablaAutorizaciones({ solicitudes: solicitudesIniciales, puedeAutorizar = false }) {
   const [solicitudes, setSolicitudes] = useState(solicitudesIniciales);
   const [enProceso, setEnProceso] = useState(null);
   const [error, setError] = useState("");
@@ -66,6 +66,13 @@ export default function TablaAutorizaciones({ solicitudes: solicitudesIniciales 
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
+      {!puedeAutorizar && (
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          Puedes ver las solicitudes pendientes, pero no tienes el permiso de Autorizador Global para
+          resolverlas.
+        </p>
+      )}
+
       <div className="overflow-x-auto rounded-lg border border-black/[.08] dark:border-white/[.145]">
         <table className="w-full min-w-[900px] text-sm">
           <thead>
@@ -108,32 +115,34 @@ export default function TablaAutorizaciones({ solicitudes: solicitudesIniciales 
                   <td className="px-4 py-3 text-right font-medium">{formatoMXN(s.total)}</td>
                   <td className="px-4 py-3">{s.solicitante}</td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        type="button"
-                        disabled={deshabilitado}
-                        onClick={() => actualizarEstado(s.id, "Autorizado")}
-                        className="flex items-center gap-1 rounded-full bg-green-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
-                      >
-                        <CheckCircle2 size={13} /> Autorizar
-                      </button>
-                      <button
-                        type="button"
-                        disabled={deshabilitado}
-                        onClick={() => actualizarEstado(s.id, "Pospuesto")}
-                        className="flex items-center gap-1 rounded-full border border-black/[.08] px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
-                      >
-                        <Clock size={13} /> Posponer
-                      </button>
-                      <button
-                        type="button"
-                        disabled={deshabilitado}
-                        onClick={() => actualizarEstado(s.id, "Cancelado")}
-                        className="flex items-center gap-1 rounded-full border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
-                      >
-                        <XCircle size={13} /> Cancelar
-                      </button>
-                    </div>
+                    {puedeAutorizar && (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          disabled={deshabilitado}
+                          onClick={() => actualizarEstado(s.id, "Autorizado")}
+                          className="flex items-center gap-1 rounded-full bg-green-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+                        >
+                          <CheckCircle2 size={13} /> Autorizar
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deshabilitado}
+                          onClick={() => actualizarEstado(s.id, "Pospuesto")}
+                          className="flex items-center gap-1 rounded-full border border-black/[.08] px-3 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-black/[.04] disabled:opacity-50 dark:border-white/[.145] dark:text-zinc-400 dark:hover:bg-white/[.06]"
+                        >
+                          <Clock size={13} /> Posponer
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deshabilitado}
+                          onClick={() => actualizarEstado(s.id, "Cancelado")}
+                          className="flex items-center gap-1 rounded-full border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
+                        >
+                          <XCircle size={13} /> Cancelar
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );

@@ -173,6 +173,11 @@ export async function procesarPagoSolicitud(solicitudId, fechaPago) {
 
   revalidatePath("/tesoreria");
   revalidatePath("/historial");
+  revalidatePath("/control-maestro");
+  revalidatePath("/autorizaciones");
+  revalidatePath("/dashboard");
+  revalidatePath("/wbs");
+  revalidatePath("/mis-solicitudes");
   return { ok: true, cuentas, movimientos };
 }
 
@@ -200,5 +205,6 @@ export async function revertirPagoSolicitud(solicitudId) {
   revalidatePath("/autorizaciones");
   revalidatePath("/dashboard");
   revalidatePath("/wbs");
+  revalidatePath("/mis-solicitudes");
   return { ok: true, cuentas, movimientos };
 }

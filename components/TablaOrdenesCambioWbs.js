@@ -17,7 +17,12 @@ function formatoFecha(fecha) {
  * propuso una orden no puede autorizarla (la RPC lo bloquea server-side); en
  * ese caso el renglón solo deja "Rechazar" (cancelarla) habilitado.
  */
-export default function TablaOrdenesCambioWbs({ ordenes: ordenesIniciales, usuarioActualId, esAdmin }) {
+export default function TablaOrdenesCambioWbs({
+  ordenes: ordenesIniciales,
+  usuarioActualId,
+  esAdmin,
+  puedeAutorizar = false,
+}) {
   const [ordenes, setOrdenes] = useState(ordenesIniciales);
   const [enProceso, setEnProceso] = useState(null);
   const [error, setError] = useState("");
@@ -50,6 +55,13 @@ export default function TablaOrdenesCambioWbs({ ordenes: ordenesIniciales, usuar
       {error && (
         <p className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400">
           <AlertTriangle size={14} /> {error}
+        </p>
+      )}
+
+      {!puedeAutorizar && (
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          Puedes ver las órdenes de cambio pendientes, pero no tienes el permiso de Autorizador Global para
+          resolverlas.
         </p>
       )}
 
@@ -105,27 +117,29 @@ export default function TablaOrdenesCambioWbs({ ordenes: ordenesIniciales, usuar
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        type="button"
-                        disabled={deshabilitado || (propia && !esAdmin)}
-                        title={
-                          propia && !esAdmin ? "No puedes autorizar tu propia orden de cambio" : "Autorizar"
-                        }
-                        onClick={() => resolver(o.id, "Autorizado")}
-                        className="flex items-center gap-1 rounded-full bg-green-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
-                      >
-                        <CheckCircle2 size={13} /> Autorizar
-                      </button>
-                      <button
-                        type="button"
-                        disabled={deshabilitado}
-                        onClick={() => resolver(o.id, "Rechazado")}
-                        className="flex items-center gap-1 rounded-full border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
-                      >
-                        <XCircle size={13} /> {propia ? "Cancelar" : "Rechazar"}
-                      </button>
-                    </div>
+                    {puedeAutorizar && (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          disabled={deshabilitado || (propia && !esAdmin)}
+                          title={
+                            propia && !esAdmin ? "No puedes autorizar tu propia orden de cambio" : "Autorizar"
+                          }
+                          onClick={() => resolver(o.id, "Autorizado")}
+                          className="flex items-center gap-1 rounded-full bg-green-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+                        >
+                          <CheckCircle2 size={13} /> Autorizar
+                        </button>
+                        <button
+                          type="button"
+                          disabled={deshabilitado}
+                          onClick={() => resolver(o.id, "Rechazado")}
+                          className="flex items-center gap-1 rounded-full border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
+                        >
+                          <XCircle size={13} /> {propia ? "Cancelar" : "Rechazar"}
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );
