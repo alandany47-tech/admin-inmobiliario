@@ -14,7 +14,13 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { getWbsPresupuesto, actualizarPresupuestoWbs, renombrarPartidaWbs } from "@/app/actions/wbs";
+import {
+  getWbsPresupuesto,
+  crearOrdenCambioWbs,
+  actualizarDetalleWbs,
+  actualizarIvaWbs,
+  renombrarPartidaWbs,
+} from "@/app/actions/wbs";
 import { construirArbol } from "@/lib/wbs";
 import ModalImportarWbs from "@/components/ModalImportarWbs";
 import ModalDesglosePagosWbs from "@/components/ModalDesglosePagosWbs";
@@ -46,6 +52,9 @@ function NodoWbs({
   onIniciarRenombre,
   onCancelarRenombre,
   onGuardarPresupuesto,
+  onGuardarIva,
+  onGuardarUnidad,
+  onGuardarCantidadPrecio,
   onGuardarRenombre,
   modoEdicion,
   onVerDesglose,
@@ -54,8 +63,24 @@ function NodoWbs({
   const expandido = expandidos.has(nodo.id);
   const renombrando = renombrandoId === nodo.id;
   const [presupuesto, setPresupuesto] = useState(nodo.presupuesto);
+  const [porcentajeIva, setPorcentajeIva] = useState(nodo.porcentaje_iva ?? 0);
+  const [unidad, setUnidad] = useState(nodo.unidad ?? "");
+  const [cantidad, setCantidad] = useState(nodo.cantidad ?? "");
+  const [precioUnitario, setPrecioUnitario] = useState(nodo.precio_unitario ?? "");
   const [categoria, setCategoria] = useState(nodo.categoria);
   const [partida, setPartida] = useState(nodo.partida);
+
+  // El presupuesto puede recalcularse a partir de Cantidad × Precio Unitario
+  // (otro campo, no este input): sin este ajuste durante el render, el input
+  // de Presupuesto se quedaría mostrando el valor viejo hasta un remount,
+  // aunque el cambio pendiente ya tenga el monto recalculado. Ajustar estado
+  // durante el render (en vez de un efecto) es el patrón que React recomienda
+  // para "resetear" un input cuando cambia una prop derivada de otro campo.
+  const [presupuestoSincronizado, setPresupuestoSincronizado] = useState(nodo.presupuesto);
+  if (nodo.presupuesto !== presupuestoSincronizado) {
+    setPresupuestoSincronizado(nodo.presupuesto);
+    setPresupuesto(nodo.presupuesto);
+  }
 
   const inputMontoClase =
     "w-28 rounded border border-black/[.08] bg-transparent px-2 py-1 text-sm text-right dark:border-white/[.145]";
@@ -121,6 +146,54 @@ function NodoWbs({
             nodo.partida
           )}
         </td>
+        <td className="px-4 py-2">
+          {esHoja && modoEdicion ? (
+            <input
+              className={`${inputTextoClase} w-20`}
+              value={unidad}
+              onChange={(e) => setUnidad(e.target.value)}
+              onBlur={(e) => onGuardarUnidad(nodo.id, e.target.value)}
+            />
+          ) : (
+            (esHoja && nodo.unidad) || "—"
+          )}
+        </td>
+        <td className="px-4 py-2 text-right">
+          {esHoja && modoEdicion ? (
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              disabled={bloqueado}
+              className={`${inputMontoClase} w-20`}
+              value={cantidad}
+              onChange={(e) => setCantidad(e.target.value)}
+              onBlur={(e) => onGuardarCantidadPrecio(nodo.id, e.target.value, precioUnitario)}
+            />
+          ) : esHoja && nodo.cantidad != null ? (
+            nodo.cantidad
+          ) : (
+            "—"
+          )}
+        </td>
+        <td className="px-4 py-2 text-right">
+          {esHoja && modoEdicion ? (
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              disabled={bloqueado}
+              className={inputMontoClase}
+              value={precioUnitario}
+              onChange={(e) => setPrecioUnitario(e.target.value)}
+              onBlur={(e) => onGuardarCantidadPrecio(nodo.id, cantidad, e.target.value)}
+            />
+          ) : esHoja && nodo.precio_unitario != null ? (
+            formatoMXN(nodo.precio_unitario)
+          ) : (
+            "—"
+          )}
+        </td>
         <td className="px-4 py-2 text-right">
           {esHoja && modoEdicion ? (
             <input
@@ -135,6 +208,35 @@ function NodoWbs({
             />
           ) : (
             formatoMXN(esHoja ? nodo.presupuesto : nodo.presupuestoAgg)
+          )}
+        </td>
+        <td className="px-4 py-2 text-right">
+          {esHoja && modoEdicion ? (
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              disabled={bloqueado}
+              className={inputMontoClase}
+              value={porcentajeIva}
+              onChange={(e) => setPorcentajeIva(e.target.value)}
+              onBlur={(e) => onGuardarIva(nodo.id, e.target.value)}
+            />
+          ) : esHoja ? (
+            `${Number(nodo.porcentaje_iva ?? 0)}%`
+          ) : (
+            "—"
+          )}
+        </td>
+        <td className="px-4 py-2 text-right">
+          {formatoMXN(esHoja ? nodo.presupuesto_iva : nodo.presupuestoIvaAgg)}
+        </td>
+        <td className="px-4 py-2 text-right">
+          {formatoMXN(
+            esHoja
+              ? Number(nodo.presupuesto) + Number(nodo.presupuesto_iva ?? 0)
+              : nodo.presupuestoAgg + nodo.presupuestoIvaAgg
           )}
         </td>
         <td className="px-4 py-2 text-right">
@@ -185,6 +287,9 @@ function NodoWbs({
             onIniciarRenombre={onIniciarRenombre}
             onCancelarRenombre={onCancelarRenombre}
             onGuardarPresupuesto={onGuardarPresupuesto}
+            onGuardarIva={onGuardarIva}
+            onGuardarUnidad={onGuardarUnidad}
+            onGuardarCantidadPrecio={onGuardarCantidadPrecio}
             onGuardarRenombre={onGuardarRenombre}
             modoEdicion={modoEdicion}
             onVerDesglose={onVerDesglose}
@@ -352,6 +457,7 @@ export default function PanelPresupuestoWbs({ proyectos }) {
   const [modalConfirmarAbierto, setModalConfirmarAbierto] = useState(false);
   const [guardandoLote, setGuardandoLote] = useState(false);
   const [errorLote, setErrorLote] = useState("");
+  const [mensajeConfirmacion, setMensajeConfirmacion] = useState("");
   // Se incrementa al cancelar o al aplicar cambios para forzar el remount de
   // NodoWbs (su input de presupuesto/categoría/partida solo lee su valor
   // inicial una vez) y así sincronizar el valor mostrado con el real.
@@ -381,9 +487,15 @@ export default function PanelPresupuestoWbs({ proyectos }) {
       const cambio = cambiosPendientes[f.id];
       if (!cambio) return f;
       const presupuesto = cambio.presupuesto ?? f.presupuesto;
+      const porcentaje_iva = cambio.porcentaje_iva ?? f.porcentaje_iva ?? 0;
       return {
         ...f,
         presupuesto,
+        porcentaje_iva,
+        presupuesto_iva: Number(((presupuesto * porcentaje_iva) / 100).toFixed(2)),
+        unidad: cambio.unidad !== undefined ? cambio.unidad : f.unidad,
+        cantidad: cambio.cantidad !== undefined ? cambio.cantidad : f.cantidad,
+        precio_unitario: cambio.precio_unitario !== undefined ? cambio.precio_unitario : f.precio_unitario,
         categoria: cambio.categoria ?? f.categoria,
         partida: cambio.partida ?? f.partida,
         disponible: presupuesto - f.ejercido,
@@ -441,6 +553,10 @@ export default function PanelPresupuestoWbs({ proyectos }) {
         id: original.id,
         original: {
           presupuesto: original.presupuesto,
+          porcentaje_iva: original.porcentaje_iva ?? 0,
+          unidad: original.unidad ?? null,
+          cantidad: original.cantidad ?? null,
+          precio_unitario: original.precio_unitario ?? null,
           categoria: original.categoria,
           partida: original.partida,
           codigo: original.codigo,
@@ -451,6 +567,27 @@ export default function PanelPresupuestoWbs({ proyectos }) {
       if (siguiente.presupuesto !== undefined && Number(siguiente.presupuesto) === Number(previo.original.presupuesto)) {
         delete siguiente.presupuesto;
       }
+      if (
+        siguiente.porcentaje_iva !== undefined &&
+        Number(siguiente.porcentaje_iva) === Number(previo.original.porcentaje_iva)
+      ) {
+        delete siguiente.porcentaje_iva;
+      }
+      if (siguiente.unidad !== undefined && (siguiente.unidad || null) === (previo.original.unidad || null)) {
+        delete siguiente.unidad;
+      }
+      if (
+        siguiente.cantidad !== undefined &&
+        Number(siguiente.cantidad ?? 0) === Number(previo.original.cantidad ?? 0)
+      ) {
+        delete siguiente.cantidad;
+      }
+      if (
+        siguiente.precio_unitario !== undefined &&
+        Number(siguiente.precio_unitario ?? 0) === Number(previo.original.precio_unitario ?? 0)
+      ) {
+        delete siguiente.precio_unitario;
+      }
       if (siguiente.categoria !== undefined && siguiente.categoria === previo.original.categoria) {
         delete siguiente.categoria;
       }
@@ -458,7 +595,15 @@ export default function PanelPresupuestoWbs({ proyectos }) {
         delete siguiente.partida;
       }
 
-      if (siguiente.presupuesto === undefined && siguiente.categoria === undefined && siguiente.partida === undefined) {
+      if (
+        siguiente.presupuesto === undefined &&
+        siguiente.porcentaje_iva === undefined &&
+        siguiente.unidad === undefined &&
+        siguiente.cantidad === undefined &&
+        siguiente.precio_unitario === undefined &&
+        siguiente.categoria === undefined &&
+        siguiente.partida === undefined
+      ) {
         const { [id]: _omitido, ...resto } = prev;
         return resto;
       }
@@ -470,6 +615,36 @@ export default function PanelPresupuestoWbs({ proyectos }) {
     const monto = parseFloat(valor);
     if (!(monto >= 0)) return;
     actualizarCambioPendiente(id, { presupuesto: monto });
+  }
+
+  function marcarIvaPendiente(id, valor) {
+    const porcentaje = parseFloat(valor);
+    if (!(porcentaje >= 0 && porcentaje <= 100)) return;
+    actualizarCambioPendiente(id, { porcentaje_iva: porcentaje });
+  }
+
+  function marcarUnidadPendiente(id, valor) {
+    actualizarCambioPendiente(id, { unidad: valor.trim() || null });
+  }
+
+  /**
+   * Cantidad y Precio Unitario se capturan juntos porque su producto es lo
+   * que recalcula el Presupuesto (igual que en el Excel original y en Capi):
+   * si ambos quedan con valor, el presupuesto pendiente se sobreescribe con
+   * cantidad × precio; si falta alguno, solo se guardan como dato sin tocar
+   * el presupuesto (partidas tipo "monto fijo" sin captura por unidad).
+   */
+  function marcarCantidadPrecioPendiente(id, valorCantidad, valorPrecio) {
+    const cantidad = valorCantidad === "" ? null : Number(valorCantidad);
+    const precio = valorPrecio === "" ? null : Number(valorPrecio);
+    if (cantidad !== null && !(cantidad >= 0)) return;
+    if (precio !== null && !(precio >= 0)) return;
+
+    const cambio = { cantidad, precio_unitario: precio };
+    if (cantidad !== null && precio !== null) {
+      cambio.presupuesto = Number((cantidad * precio).toFixed(2));
+    }
+    actualizarCambioPendiente(id, cambio);
   }
 
   function marcarRenombrePendiente(id, categoria, partida) {
@@ -489,19 +664,67 @@ export default function PanelPresupuestoWbs({ proyectos }) {
     setVersionCambios((v) => v + 1);
   }
 
-  /** Aplica en lote los cambios confirmados en el modal: Server Actions secuenciales + refresco de filas y de la ruta. */
+  /**
+   * Aplica en lote los cambios confirmados en el modal: Server Actions
+   * secuenciales + refresco de filas y de la ruta. Un cambio de Presupuesto
+   * (directo o vía Cantidad × Precio) NO se aplica aquí: crea una Orden de
+   * Cambio pendiente en /wbs/ordenes-cambio, así que la fila vuelve a
+   * mostrar su valor anterior al refrescar — es la señal visual correcta de
+   * que sigue sin autorizar. IVA, Unidad/Cantidad/Precio sin mover el
+   * presupuesto, y renombres se aplican de inmediato, sin autorización.
+   */
   async function confirmarCambiosPendientes(comentario) {
     setGuardandoLote(true);
     setErrorLote("");
+    let ordenesCreadas = 0;
+    let aplicadosDeInmediato = 0;
 
     for (const cambio of Object.values(cambiosPendientes)) {
+      const detalle = {};
+      let tieneDetalle = false;
+      if (cambio.unidad !== undefined) {
+        detalle.unidad = cambio.unidad;
+        tieneDetalle = true;
+      }
+      if (cambio.cantidad !== undefined) {
+        detalle.cantidad = cambio.cantidad;
+        tieneDetalle = true;
+      }
+      if (cambio.precio_unitario !== undefined) {
+        detalle.precio_unitario = cambio.precio_unitario;
+        tieneDetalle = true;
+      }
+
       if (cambio.presupuesto !== undefined) {
-        const resultado = await actualizarPresupuestoWbs(cambio.id, cambio.presupuesto, comentario);
+        const resultado = await crearOrdenCambioWbs(
+          cambio.id,
+          cambio.presupuesto,
+          comentario,
+          tieneDetalle ? detalle : undefined
+        );
         if (resultado.error) {
           setErrorLote(resultado.error);
           setGuardandoLote(false);
           return;
         }
+        ordenesCreadas += 1;
+      } else if (tieneDetalle) {
+        const resultado = await actualizarDetalleWbs(cambio.id, detalle);
+        if (resultado.error) {
+          setErrorLote(resultado.error);
+          setGuardandoLote(false);
+          return;
+        }
+        aplicadosDeInmediato += 1;
+      }
+      if (cambio.porcentaje_iva !== undefined) {
+        const resultado = await actualizarIvaWbs(cambio.id, cambio.porcentaje_iva);
+        if (resultado.error) {
+          setErrorLote(resultado.error);
+          setGuardandoLote(false);
+          return;
+        }
+        aplicadosDeInmediato += 1;
       }
       if (cambio.categoria !== undefined || cambio.partida !== undefined) {
         const resultado = await renombrarPartidaWbs(
@@ -514,6 +737,7 @@ export default function PanelPresupuestoWbs({ proyectos }) {
           setGuardandoLote(false);
           return;
         }
+        aplicadosDeInmediato += 1;
       }
     }
 
@@ -523,6 +747,16 @@ export default function PanelPresupuestoWbs({ proyectos }) {
     setModalConfirmarAbierto(false);
     setGuardandoLote(false);
     setVersionCambios((v) => v + 1);
+    setMensajeConfirmacion(
+      ordenesCreadas > 0
+        ? `${ordenesCreadas} orden${ordenesCreadas === 1 ? "" : "es"} de cambio de presupuesto quedó${
+            ordenesCreadas === 1 ? "" : "aron"
+          } pendiente${ordenesCreadas === 1 ? "" : "s"} de autorización en "Órdenes de Cambio WBS".` +
+            (aplicadosDeInmediato > 0 ? ` Los demás ${aplicadosDeInmediato} cambios ya se aplicaron.` : "")
+        : aplicadosDeInmediato > 0
+          ? "Cambios aplicados."
+          : ""
+    );
     router.refresh();
   }
 
@@ -541,6 +775,14 @@ export default function PanelPresupuestoWbs({ proyectos }) {
         partidaAnterior: c.original.partida,
         presupuestoAnterior: c.original.presupuesto,
         presupuestoNuevo: c.presupuesto,
+        ivaAnterior: c.original.porcentaje_iva,
+        ivaNuevo: c.porcentaje_iva,
+        unidadAnterior: c.original.unidad,
+        unidadNueva: c.unidad,
+        cantidadAnterior: c.original.cantidad,
+        cantidadNueva: c.cantidad,
+        precioUnitarioAnterior: c.original.precio_unitario,
+        precioUnitarioNuevo: c.precio_unitario,
         categoriaNueva: c.categoria,
         partidaNueva: c.partida,
       })),
@@ -551,13 +793,22 @@ export default function PanelPresupuestoWbs({ proyectos }) {
     const XLSX = await import("xlsx");
     const hoja = XLSX.utils.aoa_to_sheet([
       [
-        "Instrucciones: completa Categoria, Partida y Presupuesto por cada subpartida hoja (Codigo es opcional, ej. 1.1.01). Elimina esta fila antes de importar.",
+        "Instrucciones: completa Categoria, Partida y Presupuesto por cada subpartida hoja (Codigo es opcional, ej. 1.1.01; Unidad/Cantidad/Precio Unitario/% IVA son opcionales — si capturas Cantidad y Precio Unitario, Presupuesto debe ser su producto). Elimina esta fila antes de importar.",
       ],
-      ["Codigo", "Categoria", "Partida", "Presupuesto"],
-      ["1.1.01", "Preliminares", "Trazo y nivelación", 0],
+      ["Codigo", "Categoria", "Partida", "Unidad", "Cantidad", "Precio Unitario", "Presupuesto", "% IVA"],
+      ["1.1.01", "Preliminares", "Trazo y nivelación", "m2", 1200, 45, 54000, 16],
     ]);
-    hoja["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 3 } }];
-    hoja["!cols"] = [{ wch: 12 }, { wch: 24 }, { wch: 32 }, { wch: 14 }];
+    hoja["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
+    hoja["!cols"] = [
+      { wch: 12 },
+      { wch: 24 },
+      { wch: 32 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 8 },
+    ];
     const libro = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(libro, hoja, "Plantilla WBS");
     XLSX.writeFile(libro, "plantilla-wbs.xlsx");
@@ -575,6 +826,7 @@ export default function PanelPresupuestoWbs({ proyectos }) {
             onChange={(e) => {
               const valor = e.target.value;
               setProyectoId(valor);
+              setMensajeConfirmacion("");
               if (valor) setCargando(true);
               else setFilas([]);
             }}
@@ -611,7 +863,10 @@ export default function PanelPresupuestoWbs({ proyectos }) {
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => setModoEdicion((m) => !m)}
+            onClick={() => {
+              setModoEdicion((m) => !m);
+              setMensajeConfirmacion("");
+            }}
             disabled={vista !== "arbol"}
             className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
               modoEdicion
@@ -640,6 +895,9 @@ export default function PanelPresupuestoWbs({ proyectos }) {
       </div>
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {mensajeConfirmacion && (
+        <p className="text-sm text-blue-700 dark:text-blue-400">{mensajeConfirmacion}</p>
+      )}
 
       {cargando ? (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">Cargando…</p>
@@ -674,7 +932,7 @@ export default function PanelPresupuestoWbs({ proyectos }) {
             </button>
           </div>
           <div className="overflow-x-auto rounded-lg border border-black/[.08] dark:border-white/[.145]">
-            <table className="w-full min-w-[1000px] text-sm">
+            <table className="w-full min-w-[1400px] text-sm">
               <thead>
                 <tr className="border-b border-black/[.08] bg-black/[.03] text-left text-xs font-medium uppercase tracking-wide text-zinc-500 dark:border-white/[.145] dark:bg-white/[.04] dark:text-zinc-400">
                   <th className="py-3 pr-4 pl-4">
@@ -688,6 +946,9 @@ export default function PanelPresupuestoWbs({ proyectos }) {
                   </th>
                   <th className="px-4 py-3">Categoría</th>
                   <th className="px-4 py-3">Partida</th>
+                  <th className="px-4 py-3">Unidad</th>
+                  <th className="px-4 py-3 text-right">Cantidad</th>
+                  <th className="px-4 py-3 text-right">P. Unitario</th>
                   <th className="px-4 py-3 text-right">
                     <button
                       type="button"
@@ -697,6 +958,9 @@ export default function PanelPresupuestoWbs({ proyectos }) {
                       Presupuesto <IconoOrden activo={orden.criterio === "presupuesto"} direccion={orden.direccion} />
                     </button>
                   </th>
+                  <th className="px-4 py-3 text-right">% IVA</th>
+                  <th className="px-4 py-3 text-right">IVA</th>
+                  <th className="px-4 py-3 text-right">Total c/IVA</th>
                   <th className="px-4 py-3 text-right">
                     <button
                       type="button"
@@ -724,6 +988,9 @@ export default function PanelPresupuestoWbs({ proyectos }) {
                     onIniciarRenombre={setRenombrando}
                     onCancelarRenombre={() => setRenombrando(null)}
                     onGuardarPresupuesto={marcarPresupuestoPendiente}
+                    onGuardarIva={marcarIvaPendiente}
+                    onGuardarUnidad={marcarUnidadPendiente}
+                    onGuardarCantidadPrecio={marcarCantidadPrecioPendiente}
                     onGuardarRenombre={marcarRenombrePendiente}
                     modoEdicion={modoEdicion}
                     onVerDesglose={setDesgloseNodo}

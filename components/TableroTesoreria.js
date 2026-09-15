@@ -341,6 +341,14 @@ export default function TableroTesoreria({
       return;
     }
 
+    // El pago ya quedó dispersado en el servidor a partir de aquí: se refleja
+    // de inmediato (saldo de cuentas, bitácora y la solicitud sale de
+    // "pendientes de pago") sin importar si la subida opcional del
+    // comprobante de abajo falla, para no dejarla reintentable dos veces.
+    setCuentas(resultado.cuentas);
+    setMovimientos(resultado.movimientos);
+    setSolicitudes((filas) => filas.filter((s) => s.id !== solicitudActiva.id));
+
     if (comprobanteArchivo) {
       const formData = new FormData();
       formData.append("archivo", comprobanteArchivo);
@@ -353,7 +361,6 @@ export default function TableroTesoreria({
     }
 
     setProcesando(false);
-    setSolicitudes((filas) => filas.filter((s) => s.id !== solicitudActiva.id));
     setSolicitudActiva(null);
   }
 

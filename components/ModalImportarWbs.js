@@ -5,7 +5,15 @@ import { AlertTriangle, Download, Upload, X } from "lucide-react";
 import { previsualizarImportWbs, aplicarImportWbs } from "@/app/actions/wbs";
 import { descargarPlantillaExcel } from "@/lib/plantillasExcel";
 
-const COLUMNAS_PLANTILLA = ["Categoría", "Partida", "Presupuesto"];
+const COLUMNAS_PLANTILLA = [
+  "Categoría",
+  "Partida",
+  "Unidad",
+  "Cantidad",
+  "Precio Unitario",
+  "Presupuesto",
+  "% IVA",
+];
 
 function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -29,11 +37,29 @@ export default function ModalImportarWbs({ proyectoId, onImportado, onCerrar }) 
       const hoja = libro.Sheets[libro.SheetNames[0]];
       const filas = XLSX.utils.sheet_to_json(hoja, { defval: "" });
 
-      const normalizadas = filas.map((f) => ({
-        categoria: f.categoria ?? f["Categoría"] ?? f["Categoria"] ?? "",
-        partida: f.partida ?? f["Partida"] ?? "",
-        presupuesto: f.presupuesto ?? f["Presupuesto"] ?? 0,
-      }));
+      const normalizadas = filas.map((f) => {
+        // El Excel original de presupuesto (columna "IVA PCT") guarda el IVA
+        // como fracción (0.16 = 16%); nuestra plantilla ("% IVA") ya lo pide
+        // en 0-100. Si viene "IVA PCT" se convierte a porcentaje entero.
+        const ivaDirecto = f.porcentaje_iva ?? f["% IVA"] ?? f["IVA %"] ?? f["Porcentaje IVA"];
+        const ivaFraccion = f["IVA PCT"];
+        const porcentaje_iva =
+          ivaDirecto !== undefined && ivaDirecto !== ""
+            ? Number(ivaDirecto)
+            : ivaFraccion !== undefined && ivaFraccion !== ""
+              ? Number(ivaFraccion) * 100
+              : 0;
+
+        return {
+          categoria: f.categoria ?? f["Categoría"] ?? f["Categoria"] ?? "",
+          partida: f.partida ?? f["Partida"] ?? "",
+          unidad: f.unidad ?? f["Unidad"] ?? f["UD"] ?? "",
+          cantidad: f.cantidad ?? f["Cantidad"] ?? "",
+          precio_unitario: f.precio_unitario ?? f["Precio Unitario"] ?? f["Precio unitario"] ?? f["Unitario"] ?? "",
+          presupuesto: f.presupuesto ?? f["Presupuesto"] ?? f["Sub total"] ?? f["Subtotal"] ?? 0,
+          porcentaje_iva,
+        };
+      });
 
       const resultado = await previsualizarImportWbs(proyectoId, normalizadas);
       if (resultado.error) {
@@ -93,7 +119,7 @@ export default function ModalImportarWbs({ proyectoId, onImportado, onCerrar }) 
             <Upload size={20} />
             {procesando
               ? "Procesando…"
-              : "Selecciona un archivo .xlsx (columnas: categoría, partida, presupuesto)"}
+              : "Selecciona un archivo .xlsx (columnas: categoría, partida, unidad, cantidad, precio unitario, presupuesto, % IVA)"}
             <input
               type="file"
               accept=".xlsx"
@@ -119,11 +145,19 @@ export default function ModalImportarWbs({ proyectoId, onImportado, onCerrar }) 
                 </h4>
                 <ul className="flex flex-col gap-1 text-sm">
                   {diff.nuevas.map((n, i) => (
-                    <li key={i} className="flex justify-between">
-                      <span>
-                        {n.categoria} — {n.partida}
+                    <li key={i} className="flex flex-col">
+                      <span className="flex justify-between">
+                        <span>
+                          {n.categoria} — {n.partida}
+                        </span>
+                        <span className="font-medium">{formatoMXN(n.presupuesto)}</span>
                       </span>
-                      <span className="font-medium">{formatoMXN(n.presupuesto)}</span>
+                      {(n.unidad || n.cantidad || n.precio_unitario || n.porcentaje_iva > 0) && (
+                        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                          {n.cantidad ?? "—"} {n.unidad || ""} × {formatoMXN(n.precio_unitario)} · IVA{" "}
+                          {n.porcentaje_iva}%
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -137,13 +171,21 @@ export default function ModalImportarWbs({ proyectoId, onImportado, onCerrar }) 
                 </h4>
                 <ul className="flex flex-col gap-1 text-sm">
                   {diff.actualizadas.map((a, i) => (
-                    <li key={i} className="flex justify-between">
-                      <span>
-                        {a.categoria} — {a.partida}
+                    <li key={i} className="flex flex-col">
+                      <span className="flex justify-between">
+                        <span>
+                          {a.categoria} — {a.partida}
+                        </span>
+                        <span className="font-medium">
+                          {formatoMXN(a.presupuestoAnterior)} → {formatoMXN(a.presupuestoNuevo)}
+                        </span>
                       </span>
-                      <span className="font-medium">
-                        {formatoMXN(a.presupuestoAnterior)} → {formatoMXN(a.presupuestoNuevo)}
-                      </span>
+                      {(a.unidad || a.cantidad || a.precio_unitario || a.porcentaje_iva > 0) && (
+                        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                          {a.cantidad ?? "—"} {a.unidad || ""} × {formatoMXN(a.precio_unitario)} · IVA{" "}
+                          {a.porcentaje_iva}%
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>

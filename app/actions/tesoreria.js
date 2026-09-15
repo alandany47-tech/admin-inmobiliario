@@ -169,9 +169,11 @@ export async function procesarPagoSolicitud(solicitudId, fechaPago) {
     return { error: `No se pudo procesar el pago: ${error.message}` };
   }
 
+  const [cuentas, movimientos] = await Promise.all([getCuentasBancarias(), getMovimientosTesoreria()]);
+
   revalidatePath("/tesoreria");
   revalidatePath("/historial");
-  return { ok: true };
+  return { ok: true, cuentas, movimientos };
 }
 
 /**

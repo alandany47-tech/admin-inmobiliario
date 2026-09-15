@@ -7,17 +7,16 @@ function formatoMXN(valor) {
   return Number(valor ?? 0).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
 }
 
-/** Modal de confirmación para aplicar en lote los cambios de presupuesto/renombre pendientes en el árbol WBS. */
+/** Modal de confirmación para aplicar en lote los cambios pendientes en el árbol WBS. */
 export default function ModalConfirmarCambiosWbs({ cambios, procesando, error, onConfirmar, onCancelar }) {
   const [comentario, setComentario] = useState("");
+  const hayCambioPresupuesto = cambios.some((c) => c.presupuestoNuevo !== undefined);
 
   return (
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 px-4">
       <div className="flex max-h-[85vh] w-full max-w-lg flex-col gap-4 overflow-y-auto rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-900">
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-black dark:text-zinc-50">
-            Confirmar Cambios de Presupuesto WBS
-          </h3>
+          <h3 className="text-base font-semibold text-black dark:text-zinc-50">Confirmar Cambios en WBS</h3>
           <button
             type="button"
             onClick={onCancelar}
@@ -32,6 +31,14 @@ export default function ModalConfirmarCambiosWbs({ cambios, procesando, error, o
           Se aplicarán {cambios.length} cambio{cambios.length === 1 ? "" : "s"} sobre el catálogo WBS:
         </p>
 
+        {hayCambioPresupuesto && (
+          <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+            Los cambios de Presupuesto no se aplican de inmediato: quedan como Orden de Cambio pendiente y
+            los debe autorizar otra persona en &ldquo;Órdenes de Cambio WBS&rdquo;. El resto de los cambios
+            (IVA, Unidad / Cantidad / Precio sin mover el presupuesto, renombres) sí se aplica de inmediato.
+          </p>
+        )}
+
         <ul className="flex flex-col gap-3">
           {cambios.map((c) => (
             <li
@@ -45,9 +52,31 @@ export default function ModalConfirmarCambiosWbs({ cambios, procesando, error, o
 
               {c.presupuestoNuevo !== undefined && (
                 <span className="flex items-center justify-between">
-                  <span className="text-zinc-600 dark:text-zinc-400">Presupuesto</span>
+                  <span className="text-zinc-600 dark:text-zinc-400">Presupuesto (requiere autorización)</span>
                   <span className="font-medium">
                     {formatoMXN(c.presupuestoAnterior)} → {formatoMXN(c.presupuestoNuevo)}
+                  </span>
+                </span>
+              )}
+
+              {c.ivaNuevo !== undefined && (
+                <span className="flex items-center justify-between">
+                  <span className="text-zinc-600 dark:text-zinc-400">% IVA</span>
+                  <span className="font-medium">
+                    {Number(c.ivaAnterior ?? 0)}% → {Number(c.ivaNuevo)}%
+                  </span>
+                </span>
+              )}
+
+              {(c.unidadNueva !== undefined ||
+                c.cantidadNueva !== undefined ||
+                c.precioUnitarioNuevo !== undefined) && (
+                <span className="flex items-center justify-between gap-2">
+                  <span className="text-zinc-600 dark:text-zinc-400">Unidad / Cant. / P. Unitario</span>
+                  <span className="font-medium">
+                    {(c.unidadNueva ?? c.unidadAnterior) || "—"} ·{" "}
+                    {(c.cantidadNueva ?? c.cantidadAnterior) ?? "—"} ×{" "}
+                    {formatoMXN(c.precioUnitarioNuevo ?? c.precioUnitarioAnterior ?? 0)}
                   </span>
                 </span>
               )}
