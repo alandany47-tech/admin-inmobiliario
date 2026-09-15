@@ -14,6 +14,9 @@ const MESES = [
 ];
 
 const ESTILO_ESTADO = {
+  "Por Autorizar": "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
+  Autorizado: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400",
+  Pospuesto: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400",
   Pagado: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400",
   Cancelado: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400",
 };
@@ -31,7 +34,12 @@ function hoyISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** Historial general de solicitudes cerradas (Pagado/Cancelado) con filtros por mes, año y proyecto. */
+/**
+ * Tabla de solicitudes de pago con filtros por mes, año y proyecto, y
+ * exportación a Excel. Reusada por /historial (cerradas, Pagado/Cancelado,
+ * de todos los usuarios con acceso) y por /mis-solicitudes (cualquier
+ * estado, solo las del usuario autenticado).
+ */
 export default function TablaHistorial({ solicitudes, proyectos }) {
   const hoy = new Date();
   const [proyectoId, setProyectoId] = useState("");

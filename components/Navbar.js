@@ -9,6 +9,7 @@ import {
   Building2,
   Calculator,
   ChevronRight,
+  ClipboardList,
   FileText,
   HandCoins,
   Home,
@@ -35,8 +36,15 @@ import { cerrarSesion } from "@/app/actions/auth";
  * a esos roles (hoy solo "Roles y Accesos", exclusivo ADMIN) o `modulo: "..."`
  * para requerir al menos nivel `lectura` en ese módulo vía `permisos_usuario`
  * (ver migración 0038) — ADMIN siempre ve todo. Los ítems sin `roles` ni
- * `modulo` (Dashboard, Historial) quedan visibles a cualquier rol
- * autenticado: son vistas agregadas cuyo contenido ya se acota solo por RLS.
+ * `modulo` (solo Dashboard) quedan visibles a cualquier rol autenticado: son
+ * vistas agregadas cuyo contenido ya se acota solo por RLS.
+ *
+ * "Historial General" reusa el módulo SOLICITUDES (no es un módulo nuevo):
+ * es la misma tabla solicitudes_pago, así que quien ya tiene acceso de
+ * lectura a Solicitudes (tesorería/administración/quien el ADMIN decida,
+ * incluyendo "operaciones" si se le da ese acceso) ve el historial completo;
+ * "Mis Solicitudes" es la contraparte personal — cualquiera con acceso a
+ * Solicitudes ve ahí solo lo propio, sin importar su rol.
  */
 const SECCIONES = [
   {
@@ -44,7 +52,7 @@ const SECCIONES = [
     nombre: "Principal",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: TrendingUp },
-      { href: "/historial", label: "Historial", icon: Table },
+      { href: "/historial", label: "Historial General", icon: Table, modulo: "SOLICITUDES" },
     ],
   },
   {
@@ -69,10 +77,12 @@ const SECCIONES = [
     nombre: "Tesorería",
     items: [
       { href: "/solicitud", label: "Solicitudes", icon: FileText, modulo: "SOLICITUDES" },
+      { href: "/mis-solicitudes", label: "Mis Solicitudes", icon: ClipboardList, modulo: "SOLICITUDES" },
       { href: "/autorizaciones", label: "Autorizaciones", icon: ShieldCheck, modulo: "SOLICITUDES" },
       { href: "/tesoreria", label: "Tesorería", icon: Landmark, modulo: "TESORERIA" },
       { href: "/control-maestro", label: "Control Maestro", icon: LayoutDashboard, modulo: "TESORERIA" },
       { href: "/wbs", label: "Presupuesto WBS", icon: Wallet, modulo: "WBS" },
+      { href: "/wbs/ordenes-cambio", label: "Órdenes de Cambio WBS", icon: ShieldCheck, modulo: "WBS" },
       { href: "/proveedores", label: "Proveedores", icon: Users, modulo: "PROVEEDORES" },
     ],
   },

@@ -1,6 +1,7 @@
 import { ArrowRightLeft, CalendarDays, Clock, Wallet } from "lucide-react";
-import { getSolicitudesDashboard } from "@/app/actions/dashboard";
+import { getSolicitudesDashboard, getResumenFinancieroPorProyecto } from "@/app/actions/dashboard";
 import DesgloseCategoriasWbs from "@/components/DesgloseCategoriasWbs";
+import ResumenProyectos from "@/components/ResumenProyectos";
 
 function formatoMXN(valor) {
   return Number(valor).toLocaleString("es-MX", { style: "currency", currency: "MXN" });
@@ -39,7 +40,10 @@ function BarraProgreso({ etiqueta, monto, porcentaje }) {
 
 /** Dashboard ejecutivo de KPIs financieros de las solicitudes de pago. */
 export default async function DashboardPage() {
-  const solicitudes = await getSolicitudesDashboard();
+  const [solicitudes, resumenProyectos] = await Promise.all([
+    getSolicitudesDashboard(),
+    getResumenFinancieroPorProyecto(),
+  ]);
 
   const hoy = new Date();
   const solicitudesPagadas = solicitudes.filter((s) => s.estado === "Pagado");
@@ -135,6 +139,13 @@ export default async function DashboardPage() {
               </span>
             </div>
           </KpiCard>
+        </section>
+
+        <section className="flex flex-col gap-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            Cobranza vs. Presupuesto por Proyecto
+          </h2>
+          <ResumenProyectos proyectos={resumenProyectos} />
         </section>
 
         <section className="flex flex-col gap-4 rounded-lg border border-black/[.08] bg-white p-6 dark:border-white/[.145] dark:bg-zinc-900">

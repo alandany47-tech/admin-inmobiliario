@@ -46,7 +46,9 @@ export async function getWbsCatalog() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("wbs_presupuesto_resumen")
-    .select("id, proyecto_id, categoria, partida, codigo, parent_id, presupuesto, ejercido, disponible, activo")
+    .select(
+      "id, proyecto_id, categoria, partida, codigo, parent_id, presupuesto, unidad, cantidad, precio_unitario, porcentaje_iva, presupuesto_iva, presupuesto_total, ejercido, disponible, activo"
+    )
     .order("categoria", { ascending: true })
     .order("partida", { ascending: true });
 
@@ -93,21 +95,28 @@ export async function getDesglosePagosWbs(wbsId) {
 }
 
 /**
- * Actualiza el techo de presupuesto de una partida. No mueve dinero: no
- * requiere función atómica. Exige `comentario` (comentario libre / número de
- * Orden de Cambio) y deja una fila en `wbs_historial_cambios` con el monto
- * anterior y el nuevo.
+ * Propone un nuevo techo de presupuesto para una partida (y opcionalmente su
+ * unidad/cantidad/precio unitario, capturados juntos porque cantidad×precio
+ * es lo que produce el nuevo presupuesto en el flujo de captura por unidad).
+ * NO modifica `wbs_catalog` todavía: crea una Orden de Cambio en estado "Por
+ * Autorizar" — el presupuesto solo se aplica cuando alguien más (nunca quien
+ * la propuso, ver `autorizar_orden_cambio_wbs`) la autoriza desde
+ * /wbs/ordenes-cambio. Exige `comentario` (queda como justificación de la
+ * orden y, al autorizarse, como comentario del historial).
  */
-export async function actualizarPresupuestoWbs(id, nuevoPresupuesto, comentario) {
+export async function crearOrdenCambioWbs(id, nuevoPresupuesto, comentario, detalle) {
   const monto = Number(nuevoPresupuesto);
   if (!Number.isFinite(monto) || monto < 0) {
     return { error: "Captura un presupuesto válido." };
   }
   if (!comentario?.trim()) {
-    return { error: "Captura un comentario u Orden de Cambio (OC) para el historial." };
+    return { error: "Captura un comentario u Orden de Cambio (OC)." };
   }
 
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   const { data: actual, error: errorActual } = await supabase
     .from("wbs_catalog")
@@ -119,21 +128,112 @@ export async function actualizarPresupuestoWbs(id, nuevoPresupuesto, comentario)
     return { error: `No se pudo leer el presupuesto actual: ${errorActual.message}` };
   }
 
-  const { error } = await supabase.from("wbs_catalog").update({ presupuesto: monto }).eq("id", id);
-
-  if (error) {
-    return { error: `No se pudo actualizar el presupuesto: ${error.message}` };
-  }
-
-  const { error: errorHistorial } = await supabase.from("wbs_historial_cambios").insert({
+  const { error } = await supabase.from("wbs_ordenes_cambio").insert({
     wbs_catalog_id: id,
     presupuesto_anterior: actual.presupuesto,
     presupuesto_nuevo: monto,
+    unidad_nueva: detalle?.unidad || null,
+    cantidad_nueva: detalle?.cantidad ?? null,
+    precio_unitario_nuevo: detalle?.precio_unitario ?? null,
     comentario: comentario.trim(),
+    solicitado_por: user?.id ?? null,
   });
 
-  if (errorHistorial) {
-    return { error: `Presupuesto actualizado, pero no se pudo registrar el historial: ${errorHistorial.message}` };
+  if (error) {
+    return { error: `No se pudo crear la orden de cambio: ${error.message}` };
+  }
+
+  revalidatePath("/wbs");
+  revalidatePath("/wbs/ordenes-cambio");
+  return { ok: true, pendiente: true };
+}
+
+/**
+ * Actualiza unidad/cantidad/precio unitario SIN mover el presupuesto (por
+ * eso no pasa por la Orden de Cambio: no afecta el techo de gasto, solo
+ * datos descriptivos/de calculadora).
+ */
+export async function actualizarDetalleWbs(id, detalle) {
+  const cambios = {};
+  if (detalle?.unidad !== undefined) cambios.unidad = detalle.unidad || null;
+  if (detalle?.cantidad !== undefined) cambios.cantidad = detalle.cantidad;
+  if (detalle?.precio_unitario !== undefined) cambios.precio_unitario = detalle.precio_unitario;
+  if (Object.keys(cambios).length === 0) return { ok: true };
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("wbs_catalog").update(cambios).eq("id", id);
+
+  if (error) {
+    return { error: `No se pudo actualizar: ${error.message}` };
+  }
+
+  revalidatePath("/wbs");
+  return { ok: true };
+}
+
+/** Lista las Órdenes de Cambio de presupuesto WBS pendientes de autorización. */
+export async function getOrdenesCambioPendientes() {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("wbs_ordenes_cambio")
+    .select(
+      "id, presupuesto_anterior, presupuesto_nuevo, unidad_nueva, cantidad_nueva, precio_unitario_nuevo, comentario, created_at, solicitado_por, wbs_catalog(codigo, categoria, partida, proyecto_id, proyectos(codigo, nombre)), solicitante:perfiles_usuario!wbs_ordenes_cambio_solicitado_por_fkey(nombre)"
+    )
+    .eq("estado", "Por Autorizar")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("Error al consultar órdenes de cambio pendientes:", error.message);
+    return [];
+  }
+
+  return data;
+}
+
+/**
+ * Autoriza o rechaza una Orden de Cambio pendiente. Delegado por completo en
+ * la RPC `autorizar_orden_cambio_wbs`: ella valida el estado de origen y que
+ * quien autoriza no sea quien propuso el cambio, y aplica el nuevo
+ * presupuesto a `wbs_catalog` + el registro en `wbs_historial_cambios` en la
+ * misma transacción cuando el resultado es "Autorizado".
+ */
+export async function autorizarOrdenCambioWbs(id, nuevoEstado) {
+  if (!["Autorizado", "Rechazado"].includes(nuevoEstado)) {
+    return { error: "Estado no válido." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("autorizar_orden_cambio_wbs", {
+    p_orden_id: id,
+    p_nuevo_estado: nuevoEstado,
+  });
+
+  if (error) {
+    return { error: `No se pudo resolver la orden de cambio: ${error.message}` };
+  }
+
+  revalidatePath("/wbs");
+  revalidatePath("/wbs/ordenes-cambio");
+  return { ok: true };
+}
+
+/**
+ * Actualiza el % de IVA informativo de una partida. A diferencia del
+ * presupuesto, no es un techo de gasto ni una Orden de Cambio: solo alimenta
+ * las columnas de IVA/total con IVA que ve administración/operaciones, así
+ * que no exige comentario ni deja rastro en wbs_historial_cambios.
+ */
+export async function actualizarIvaWbs(id, nuevoPorcentaje) {
+  const porcentaje = Number(nuevoPorcentaje);
+  if (!Number.isFinite(porcentaje) || porcentaje < 0 || porcentaje > 100) {
+    return { error: "Captura un porcentaje de IVA válido (0-100)." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("wbs_catalog").update({ porcentaje_iva: porcentaje }).eq("id", id);
+
+  if (error) {
+    return { error: `No se pudo actualizar el IVA: ${error.message}` };
   }
 
   revalidatePath("/wbs");
@@ -174,14 +274,16 @@ export async function renombrarPartidaWbs(id, categoria, partida) {
 /**
  * Calcula el diff entre el catálogo WBS actual de un proyecto y las filas de
  * un Excel importado, sin aplicar ningún cambio. `filas` es un arreglo de
- * { categoria, partida, presupuesto } ya parseado en el cliente.
+ * { categoria, partida, presupuesto, unidad?, cantidad?, precio_unitario?,
+ * porcentaje_iva? } ya parseado en el cliente (mismo detalle que ya trae el
+ * Excel original de presupuesto: Codigo/Partida/UD/Cantidad/Unitario/IVA%).
  */
 export async function previsualizarImportWbs(proyectoId, filas) {
   const supabase = await createClient();
 
   const { data: existentes, error } = await supabase
     .from("wbs_catalog")
-    .select("id, categoria, partida, presupuesto, activo")
+    .select("id, categoria, partida, presupuesto, unidad, cantidad, precio_unitario, porcentaje_iva, activo")
     .eq("proyecto_id", proyectoId);
 
   if (error) {
@@ -195,26 +297,43 @@ export async function previsualizarImportWbs(proyectoId, filas) {
   const nuevas = [];
   const actualizadas = [];
 
+  const numeroONulo = (v) => (v === "" || v === null || v === undefined ? null : Number(v));
+
   for (const fila of filas) {
     const categoria = String(fila.categoria ?? "").trim();
     const partida = String(fila.partida ?? "").trim();
     const presupuesto = Number(fila.presupuesto);
     if (!categoria || !partida || !Number.isFinite(presupuesto)) continue;
 
+    const unidad = fila.unidad ? String(fila.unidad).trim() : null;
+    const cantidad = numeroONulo(fila.cantidad);
+    const precio_unitario = numeroONulo(fila.precio_unitario);
+    const porcentaje_iva = fila.porcentaje_iva === "" || fila.porcentaje_iva == null ? 0 : Number(fila.porcentaje_iva);
+
     const k = clave(categoria, partida);
     clavesImportadas.add(k);
     const existente = mapaExistente.get(k);
+    const detalle = { unidad, cantidad, precio_unitario, porcentaje_iva };
 
     if (!existente) {
-      nuevas.push({ categoria, partida, presupuesto });
-    } else if (Number(existente.presupuesto) !== presupuesto) {
-      actualizadas.push({
-        id: existente.id,
-        categoria,
-        partida,
-        presupuestoAnterior: existente.presupuesto,
-        presupuestoNuevo: presupuesto,
-      });
+      nuevas.push({ categoria, partida, presupuesto, ...detalle });
+    } else {
+      const cambioDetalle =
+        (existente.unidad ?? null) !== unidad ||
+        Number(existente.cantidad ?? 0) !== Number(cantidad ?? 0) ||
+        Number(existente.precio_unitario ?? 0) !== Number(precio_unitario ?? 0) ||
+        Number(existente.porcentaje_iva ?? 0) !== porcentaje_iva;
+
+      if (Number(existente.presupuesto) !== presupuesto || cambioDetalle) {
+        actualizadas.push({
+          id: existente.id,
+          categoria,
+          partida,
+          presupuestoAnterior: existente.presupuesto,
+          presupuestoNuevo: presupuesto,
+          ...detalle,
+        });
+      }
     }
   }
 
@@ -254,6 +373,10 @@ export async function aplicarImportWbs(proyectoId, { nuevas, actualizadas, noVie
         categoria: n.categoria,
         partida: n.partida,
         presupuesto: n.presupuesto,
+        unidad: n.unidad ?? null,
+        cantidad: n.cantidad ?? null,
+        precio_unitario: n.precio_unitario ?? null,
+        porcentaje_iva: n.porcentaje_iva ?? 0,
       }))
     );
     if (error) return { error: `No se pudieron insertar las partidas nuevas: ${error.message}` };
@@ -262,7 +385,13 @@ export async function aplicarImportWbs(proyectoId, { nuevas, actualizadas, noVie
   for (const a of actualizadas ?? []) {
     const { error } = await supabase
       .from("wbs_catalog")
-      .update({ presupuesto: a.presupuestoNuevo })
+      .update({
+        presupuesto: a.presupuestoNuevo,
+        unidad: a.unidad ?? null,
+        cantidad: a.cantidad ?? null,
+        precio_unitario: a.precio_unitario ?? null,
+        porcentaje_iva: a.porcentaje_iva ?? 0,
+      })
       .eq("id", a.id);
     if (error) return { error: `No se pudo actualizar la partida ${a.partida}: ${error.message}` };
   }
